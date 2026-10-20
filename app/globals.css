@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
+
+  --color-bg: rgb(244 246 248);
+  --color-surface: rgb(255 255 255);
+  --color-sunken: rgb(238 241 244);
+  --color-line: rgb(223 228 234);
+  --color-ink: rgb(17 24 39);
+  --color-muted: rgb(100 112 128);
+
+  --color-brand: rgb(15 118 110);
+  --color-brand-ink: rgb(255 255 255);
+  --color-brand-soft: rgb(224 242 239);
+
+  --color-ok: rgb(21 128 61);
+  --color-ok-soft: rgb(220 252 231);
+  --color-warn: rgb(180 83 9);
+  --color-warn-soft: rgb(254 243 199);
+  --color-bad: rgb(190 18 60);
+  --color-bad-soft: rgb(255 228 230);
+  --color-info: rgb(29 78 216);
+  --color-info-soft: rgb(219 234 254);
+
+  --color-gaza: rgb(13 148 136);
+  --color-khy: rgb(124 58 237);
+
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.05);
+  --shadow-pop: 0 12px 40px rgb(15 23 42 / 0.18);
+
+  --animate-fade-up: fade-up 0.22s ease-out both;
+  --animate-fade-in: fade-in 0.18s ease-out both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 25%, transparent);
+  }
+}
+
+@layer base {
+  :root { color-scheme: light; }
+  html, body { background: var(--color-bg); color: var(--color-ink); }
+  body { font-feature-settings: "tnum" 1; -webkit-font-smoothing: antialiased; }
+  button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+  input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--color-muted) 70%, transparent); }
+}
+
+.num { font-variant-numeric: tabular-nums; }
+.ltr { direction: ltr; unicode-bidi: isolate; }
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

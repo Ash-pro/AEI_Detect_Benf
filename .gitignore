@@ -1,0 +1,8 @@
+node_modules
+.next
+out
+*.tsbuildinfo
+.env*.local
+
+# ملفات مؤقتة محلية
+_to_delete

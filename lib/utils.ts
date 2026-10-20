@@ -1,0 +1,128 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const TZ = "Asia/Gaza";
+
+/** تحويل الأرقام العربية/الهندية إلى إنجليزية وحذف أي رمز غير رقمي */
+export function normalizeDigits(value: string): string {
+  return value
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\D/g, "");
+}
+
+/** خانة الضبط لرقم الهوية (Luhn معدّل على 9 أرقام) */
+export function isValidNationalId(id: string): boolean {
+  if (!/^\d{9}$/.test(id)) return false;
+  let total = 0;
+  for (let i = 0; i < 9; i++) {
+    let d = Number(id[i]) * ((i % 2) + 1);
+    if (d > 9) d -= 9;
+    total += d;
+  }
+  return total % 10 === 0;
+}
+
+export function normalizeArabicName(value: string): string {
+  return value
+    .replace(/[ً-ْ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function nameParts(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function normalizePhone(value: string): string {
+  let d = normalizeDigits(value);
+  if (d.startsWith("970") || d.startsWith("972")) d = "0" + d.slice(3);
+  return d;
+}
+
+export function isValidPhone(value: string): boolean {
+  return /^05[69]\d{7}$/.test(normalizePhone(value));
+}
+
+export function dateKey(iso: string | Date): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+export function todayKey(): string {
+  return dateKey(new Date());
+}
+
+export function isToday(iso: string): boolean {
+  return dateKey(iso) === todayKey();
+}
+
+export function formatTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(
+    new Date(iso),
+  );
+}
+
+export function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric" }).format(
+    new Date(iso),
+  );
+}
+
+export function formatShortDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "2-digit", month: "2-digit" }).format(new Date(iso));
+}
+
+export function daysBetween(iso: string): number {
+  const a = new Date(dateKey(iso) + "T00:00:00Z").getTime();
+  const b = new Date(todayKey() + "T00:00:00Z").getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** "منذ 7 أيام" مع قواعد العدد العربية */
+export function sinceText(iso: string): string {
+  const n = daysBetween(iso);
+  if (n <= 0) return "اليوم";
+  if (n === 1) return "أمس";
+  if (n === 2) return "منذ يومين";
+  if (n <= 10) return `منذ ${n} أيام`;
+  return `منذ ${n} يوماً`;
+}
+
+export function countText(n: number, one: string, two: string, few: string, many: string): string {
+  if (n === 0) return `لا ${few}`;
+  if (n === 1) return one;
+  if (n === 2) return two;
+  if (n <= 10) return `${n} ${few}`;
+  return `${n} ${many}`;
+}
+
+export function uuid(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+export function storageGet<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function storageSet(key: string, value: unknown) {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* تجاهل */
+  }
+}
