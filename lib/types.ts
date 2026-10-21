@@ -1,5 +1,5 @@
 export type CenterCode = "GAZA" | "KHY";
-export type Role = "RECEPTION" | "POINT" | "ADMIN";
+export type Role = "RECEPTION" | "POINT" | "SUPERVISOR" | "ADMIN";
 export type EntryKind = "RECEPTION" | "POINT";
 
 export interface Center {
@@ -58,7 +58,6 @@ export interface Settings {
   hintReception: string;
   hintPoint: string;
   idleMinutes: number;
-  checkDigit: boolean;
 }
 
 export interface Db {

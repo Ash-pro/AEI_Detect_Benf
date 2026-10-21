@@ -3,7 +3,7 @@ import { addDays, isValidNationalId, todayKey } from "./utils";
 
 /* بيانات تجريبية للعرض والاختبار فقط — تُستبدل بـ Supabase لاحقاً */
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 export const CENTERS: Center[] = [
   { code: "GAZA", name: "مركز غزة", short: "غزة" },
@@ -27,7 +27,6 @@ export const DEFAULT_SETTINGS: Settings = {
   hintReception: "أدخل رقم هوية ولي الأمر (الأم أو الأب)، ثم اختر المشاريع التي ستتوجه لها الحالة واضغط إدخال.",
   hintPoint: "أدخل كل حالة تخدمها، واحدة تلو الأخرى، فور تقديم الخدمة.",
   idleMinutes: 30,
-  checkDigit: true,
 };
 
 /** كلمة المرور لكل الحسابات التجريبية */
@@ -42,6 +41,7 @@ function seedUsers(): User[] {
   const created = addDays(todayKey(), -60) + "T08:00:00Z";
   const users: User[] = [
     { id: "u-admin", username: "admin", password: DEMO_PASSWORD, fullName: "مدير النظام", role: "ADMIN", centers: BOTH, projects: [], active: true, createdAt: created },
+    { id: "u-sup", username: "supervisor", password: DEMO_PASSWORD, fullName: "مشرف النظام", role: "SUPERVISOR", centers: BOTH, projects: [], active: true, createdAt: created },
     { id: "u-rg", username: "reception.gaza", password: DEMO_PASSWORD, fullName: "هناء أبو شعبان", role: "RECEPTION", centers: ["GAZA"], projects: [], active: true, createdAt: created },
     { id: "u-rk", username: "reception.khy", password: DEMO_PASSWORD, fullName: "سماح الأسطل", role: "RECEPTION", centers: ["KHY"], projects: [], active: true, createdAt: created },
     { id: "u-rx", username: "reception.both", password: DEMO_PASSWORD, fullName: "ياسر عودة", role: "RECEPTION", centers: BOTH, projects: [], active: false, createdAt: created },

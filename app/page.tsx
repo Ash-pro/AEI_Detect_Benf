@@ -3,13 +3,14 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { homePath, isStaff } from "@/lib/roles";
 
 export default function Home() {
   const { ready, center, user } = useStore();
   const router = useRouter();
   useEffect(() => {
     if (!ready) return;
-    if (user?.role === "ADMIN") router.replace("/admin");
+    if (user && !isStaff(user.role)) router.replace(homePath(user.role));
     else if (!center) router.replace("/setup");
     else if (!user) router.replace("/login");
     else router.replace("/entry");

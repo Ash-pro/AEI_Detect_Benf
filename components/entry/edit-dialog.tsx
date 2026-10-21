@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowLeftRight, Info, Save, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeftRight, Info, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckBox } from "@/components/ui/check";
@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { KindTag } from "./history";
 import { useStore } from "@/lib/store";
 import type { Beneficiary, Entry, Project } from "@/lib/types";
-import { formatTime, isValidNationalId, normalizeDigits } from "@/lib/utils";
+import { formatTime, normalizeDigits } from "@/lib/utils";
 
 /** تعديل بيانات الهوية وإدخالات اليوم للموظف نفسه */
 export function EditDialog({
@@ -28,36 +28,9 @@ export function EditDialog({
   projects: Project[];
   onMoved: (nid: string) => void;
 }) {
-  const { renameBeneficiary } = useStore();
-  const toast = useToast();
-  const [name, setName] = useState(beneficiary.name);
-
-  useEffect(() => {
-    if (open) setName(beneficiary.name);
-  }, [open, beneficiary.name]);
-
   return (
     <Dialog open={open} onClose={onClose} title="تعديل" description={beneficiary.nid} size="lg">
       <div className="space-y-6">
-        <section>
-          <Label htmlFor="edit-name">الاسم</Label>
-          <div className="flex gap-2">
-            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="اختياري" />
-            <Button
-              variant="secondary"
-              size="lg"
-              disabled={name.trim() === beneficiary.name}
-              onClick={() => {
-                renameBeneficiary(beneficiary.nid, name);
-                toast("تم حفظ الاسم");
-              }}
-            >
-              <Save className="size-4" />
-              حفظ
-            </Button>
-          </div>
-        </section>
-
         <section>
           <h3 className="mb-2 text-sm font-bold">إدخالاتك اليوم لهذه الهوية</h3>
           {todayMine.length === 0 ? (
@@ -167,7 +140,6 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
             size="lg"
             disabled={newId.length !== 9}
             onClick={() => {
-              if (db.settings.checkDigit && !isValidNationalId(newId)) return setErr("رقم الهوية غير صالح — تأكد من الأرقام");
               const e = moveEntry(entry.id, newId);
               if (e) return setErr(e);
               toast(db.beneficiaries[newId] ? "نُقل الإدخال إلى الهوية الصحيحة المسجلة" : "تم تصحيح رقم الهوية");

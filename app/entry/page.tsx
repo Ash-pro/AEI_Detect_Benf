@@ -12,7 +12,7 @@ import { StatsStrip } from "@/components/entry/stats-strip";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckBox } from "@/components/ui/check";
-import { FieldError, Input, Label } from "@/components/ui/field";
+import { FieldError } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import {
@@ -25,7 +25,7 @@ import {
   visibleHistory,
 } from "@/lib/queries";
 import { freshValidId } from "@/lib/mock-data";
-import { cn, formatTime, isValidNationalId, normalizeDigits, todayKey } from "@/lib/utils";
+import { cn, formatTime, normalizeDigits, todayKey } from "@/lib/utils";
 
 /** الشاشة 3 — شاشة الإدخال (الاستقبال والنقاط) */
 function EntryScreen() {
@@ -40,17 +40,14 @@ function EntryScreen() {
   const [raw, setRaw] = useState("");
   const [nid, setNid] = useState("");
   const [error, setError] = useState<string>();
-  const [name, setName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [formError, setFormError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
   const today = todayKey();
-  const projects = useMemo(() => {
-    const list = activeProjects(db, c);
-    return isPoint ? list.filter((p) => u.projects.includes(p.code)) : list;
-  }, [db, c, isPoint, u.projects]);
+  // كل مشاريع المركز تظهر للجميع، حتى يصحح موظف النقطة أي توجيه خاطئ
+  const projects = useMemo(() => activeProjects(db, c), [db, c]);
 
   const beneficiary = nid ? db.beneficiaries[nid] : undefined;
   const history = useMemo(() => (nid ? visibleHistory(db, nid, u) : []), [db, nid, u]);
@@ -79,22 +76,21 @@ function EntryScreen() {
         const done = new Set(
           db.entries.filter((e) => e.nid === id && e.date === today && e.kind === "POINT").flatMap((e) => e.projects),
         );
-        const free = available.filter((p) => !done.has(p));
-        const mineLast = [...db.entries].reverse().find((e) => e.userId === u.id && free.includes(e.projects[0]));
-        return free.length ? [mineLast?.projects[0] ?? free[0]] : [];
+        const own = available.filter((p) => u.projects.includes(p) && !done.has(p));
+        const mineLast = [...db.entries].reverse().find((e) => e.userId === u.id && own.includes(e.projects[0]));
+        return own.length ? [mineLast?.projects[0] ?? own[0]] : [];
       }
       const todayEntry = db.entries.find((e) => e.nid === id && e.date === today && e.kind === "RECEPTION" && e.center === c);
       const src = todayEntry ?? lastReception(db, id, c);
       return src ? src.projects.filter((p) => available.includes(p)) : [];
     },
-    [db, projects, isPoint, today, u.id, c],
+    [db, projects, isPoint, today, u.id, u.projects, c],
   );
 
   const reset = useCallback(() => {
     setRaw("");
     setNid("");
     setError(undefined);
-    setName("");
     setSelected([]);
     setFormError("");
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -102,7 +98,6 @@ function EntryScreen() {
 
   function open(id: string) {
     setNid(id);
-    setName("");
     setFormError("");
     setSelected(preselect(id));
   }
@@ -116,17 +111,17 @@ function EntryScreen() {
       setSelected([]);
     }
     if (d.length === 9) {
-      if (db.settings.checkDigit && !isValidNationalId(d)) setError("رقم الهوية غير صالح — تأكد من الأرقام");
-      else open(d);
+      open(d);
     }
   }
 
   function submit() {
     if (!nid) return;
     if (!store.online) return setFormError("لا يوجد اتصال بالإنترنت. انتظر عودة الاتصال ثم أعد المحاولة");
-    const r = store.addEntry({ nid, name, projects: selected });
+    const r = store.addEntry({ nid, projects: selected });
     if (!r.ok) return setFormError(r.error);
-    const names = r.entry.projects.map((p) => projectName(db, p)).join("، ");
+    const done = r.mode === "updated" ? r.entry.projects : selected.filter((p) => !r.skipped.includes(p));
+    const names = done.map((p) => projectName(db, p)).join("، ");
     toast(r.mode === "updated" ? `تم تحديث إدخال اليوم — ${names}` : `تم الإدخال${r.isNew ? " (حالة جديدة)" : ""} — ${names}`);
     reset();
   }
@@ -156,7 +151,7 @@ function EntryScreen() {
     );
   }
 
-  const allDone = isPoint && projects.length > 0 && projects.every((p) => pointDoneToday.has(p.code));
+  const allDone = isPoint && u.projects.length > 0 && u.projects.every((p) => pointDoneToday.has(p));
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 px-4 pb-24 pt-5">
@@ -182,19 +177,17 @@ function EntryScreen() {
                 حالة جديدة — أول مرة في النظام
               </div>
               {status}
-              <div>
-                <Label htmlFor="name">الاسم (اختياري)</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="اكتب الاسم كما تريد أو اتركه فارغاً" />
-              </div>
             </>
           )}
 
           <fieldset>
             <legend className="mb-2.5 text-sm font-bold">
-              {isPoint ? "المشروع" : "التحويل إلى"}
-              {!isPoint && <span className="ms-2 font-normal text-muted">يمكن اختيار أكثر من مشروع</span>}
+              {isPoint ? "المشروع الذي خُدمت فيه الحالة" : "التحويل إلى"}
+              <span className="ms-2 font-normal text-muted">
+                {isPoint ? "مشروعك محدد، ويمكنك اختيار غيره لتصحيح توجيه خاطئ" : "يمكن اختيار أكثر من مشروع"}
+              </span>
             </legend>
-            <div className={cn("grid gap-2.5", isPoint && projects.length === 1 ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3")}>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {projects.map((p) => {
                 const doneAt = isPoint ? pointDoneToday.get(p.code) : undefined;
                 return (
@@ -202,7 +195,7 @@ function EntryScreen() {
                     key={p.code}
                     checked={selected.includes(p.code)}
                     disabled={Boolean(doneAt)}
-                    sub={doneAt ? `أُدخلت اليوم ${formatTime(doneAt)}` : undefined}
+                    sub={doneAt ? `أُدخلت اليوم ${formatTime(doneAt)}` : isPoint && u.projects.includes(p.code) ? "مشروعك" : undefined}
                     onChange={(v) => {
                       setFormError("");
                       setSelected((s) => (v ? [...s, p.code] : s.filter((x) => x !== p.code)));
@@ -218,7 +211,7 @@ function EntryScreen() {
           {allDone && (
             <div className="flex items-center gap-2 rounded-xl bg-bad-soft px-4 py-3 text-sm font-bold text-bad">
               <CircleAlert className="size-5" />
-              هذه الحالة أُدخلت اليوم في مشروعك. لا يمكن إدخالها مرة ثانية.
+              هذه الحالة أُدخلت اليوم في مشروعك. لا يمكن إدخالها مرة ثانية في نفس المشروع.
             </div>
           )}
 
@@ -243,7 +236,7 @@ function EntryScreen() {
           onClose={() => setEditOpen(false)}
           beneficiary={beneficiary}
           todayMine={todayMine}
-          projects={isPoint ? projects : activeProjects(db, c)}
+          projects={projects}
           onMoved={(id) => {
             setEditOpen(false);
             setRaw(id);
@@ -298,7 +291,6 @@ function TestPanel({ onPick }: { onPick: (id: string) => void }) {
       if (t) list.push({ id: t.nid, label: "أُدخلت اليوم في الاستقبال" });
     }
     list.push({ id: freshValidId(db), label: "هوية جديدة غير مسجلة" });
-    list.push({ id: "123456789", label: "رقم غير صالح" });
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, user]);

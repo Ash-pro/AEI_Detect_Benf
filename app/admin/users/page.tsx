@@ -15,13 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
+import { isStaff } from "@/lib/roles";
 import { centerName, lastActivity, projectName } from "@/lib/queries";
 import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatTime, normalizeArabicName, sinceText, todayKey } from "@/lib/utils";
 
 type RoleFilter = Role | "ALL";
 type StatusFilter = "ALL" | "ACTIVE" | "OFF";
-const ROLE_ORDER: Record<Role, number> = { ADMIN: 0, RECEPTION: 1, POINT: 2 };
+const ROLE_ORDER: Record<Role, number> = { ADMIN: 0, SUPERVISOR: 1, RECEPTION: 2, POINT: 3 };
 
 /** الشاشة 8 — المستخدمون */
 export default function UsersPage() {
@@ -67,6 +68,7 @@ export default function UsersPage() {
     reception: db.users.filter((u) => u.role === "RECEPTION").length,
     point: db.users.filter((u) => u.role === "POINT").length,
     admin: db.users.filter((u) => u.role === "ADMIN").length,
+    supervisor: db.users.filter((u) => u.role === "SUPERVISOR").length,
   };
 
   function toggleActive(u: User) {
@@ -102,10 +104,11 @@ export default function UsersPage() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "استقبال", value: counts.reception, r: "RECEPTION" as Role },
           { label: "نقاط المشاريع", value: counts.point, r: "POINT" as Role },
+          { label: "مشرفون", value: counts.supervisor, r: "SUPERVISOR" as Role },
           { label: "أدمن", value: counts.admin, r: "ADMIN" as Role },
         ].map((t) => (
           <button
@@ -144,6 +147,7 @@ export default function UsersPage() {
               { value: "ALL", label: "الكل" },
               { value: "RECEPTION", label: "استقبال" },
               { value: "POINT", label: "نقاط" },
+              { value: "SUPERVISOR", label: "مشرف" },
               { value: "ADMIN", label: "أدمن" },
             ]}
           />
@@ -208,7 +212,7 @@ export default function UsersPage() {
                       <RoleBadge role={u.role} />
                     </td>
                     <td className="px-3 py-3 text-xs font-semibold">
-                      {u.role === "ADMIN" ? <span className="text-muted">الكل</span> : u.centers.map((c) => centerName(db, c, true)).join("، ")}
+                      {!isStaff(u.role) ? <span className="text-muted">الكل</span> : u.centers.map((c) => centerName(db, c, true)).join("، ")}
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -267,7 +271,7 @@ export default function UsersPage() {
                 <div className="ltr text-start text-xs text-muted">{u.username}</div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <RoleBadge role={u.role} />
-                  {u.role !== "ADMIN" && <span className="text-xs font-semibold text-muted">{u.centers.map((c) => centerName(db, c, true)).join("، ")}</span>}
+                  {isStaff(u.role) && <span className="text-xs font-semibold text-muted">{u.centers.map((c) => centerName(db, c, true)).join("، ")}</span>}
                   {u.projects.map((p) => (
                     <span key={p} className="rounded-md bg-sunken px-1.5 py-0.5 text-xs font-bold">
                       {projectName(db, p)}

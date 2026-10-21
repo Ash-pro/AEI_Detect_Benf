@@ -16,7 +16,8 @@ import { dayFull, formatTime, normalizeDigits, todayKey, weekday } from "@/lib/u
 /** الشاشة 6 — تفاصيل يوم */
 function DayInner() {
   const params = useSearchParams();
-  const { db } = useStore();
+  const { db, user } = useStore();
+  const canEdit = user?.role === "ADMIN";
   const date = params.get("d") || todayKey();
   const [center, setCenter] = useState<CenterFilter>((params.get("c") as CenterFilter) || "ALL");
   const [project, setProject] = useState(params.get("p") || "");
@@ -43,7 +44,7 @@ function DayInner() {
       </Link>
       <PageHead
         title={`${weekday(date)} ${dayFull(date)}`}
-        sub="كل إدخالات اليوم، مع إمكانية التعديل والحذف"
+        sub={canEdit ? "كل إدخالات اليوم، مع إمكانية التعديل والحذف" : "كل إدخالات اليوم"}
         actions={
           <>
             <CenterTabs value={center} onChange={setCenter} />
@@ -114,7 +115,7 @@ function DayInner() {
                 <th className="px-3 py-2.5 text-start font-semibold">المشاريع</th>
                 <th className="px-3 py-2.5 text-start font-semibold">المركز</th>
                 <th className="px-3 py-2.5 text-start font-semibold">الموظف</th>
-                <th className="w-12" />
+                {canEdit && <th className="w-12" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-line/60">
@@ -132,7 +133,7 @@ function DayInner() {
                   <td className="px-3 py-2">{e.projects.map((p) => projectName(db, p)).join("، ")}</td>
                   <td className="px-3 py-2 text-muted">{centerName(db, e.center, true)}</td>
                   <td className="px-3 py-2 text-muted">{userName(db, e.userId)}</td>
-                  <td className="px-2 py-1">
+                  {canEdit && <td className="px-2 py-1">
                     <button
                       onClick={() => setEdit(e)}
                       className="focus-ring grid size-8 place-items-center rounded-lg text-brand hover:bg-brand-soft"
@@ -140,12 +141,12 @@ function DayInner() {
                     >
                       <Pencil className="size-4" />
                     </button>
-                  </td>
+                  </td>}
                 </tr>
               ))}
               {!list.length && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted">
+                  <td colSpan={canEdit ? 8 : 7} className="px-4 py-12 text-center text-muted">
                     لا توجد إدخالات مطابقة
                   </td>
                 </tr>

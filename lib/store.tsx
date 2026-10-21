@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Beneficiary, CenterCode, Db, Entry, Project, SessionUser, Settings, User } from "./types";
 import { DB_VERSION, seedDb } from "./mock-data";
 import { dateKey, storageGet, storageSet, todayKey, uuid } from "./utils";
+import { isStaff } from "./roles";
 
 /* مخزن تجريبي في المتصفح — للتصميم والاختبار فقط، بدون قاعدة بيانات */
 
@@ -25,7 +26,7 @@ interface Ctx {
   login: (username: string, password: string) => { user?: SessionUser; error?: string };
   logout: () => void;
 
-  addEntry: (input: { nid: string; name?: string; projects: string[] }) => AddEntryResult;
+  addEntry: (input: { nid: string; projects: string[] }) => AddEntryResult;
   renameBeneficiary: (nid: string, name: string) => void;
   updateEntryProjects: (entryId: string, projects: string[]) => string | null;
   deleteEntry: (entryId: string) => void;
@@ -51,7 +52,7 @@ const EMPTY: Db = {
   beneficiaries: {},
   entries: [],
   changes: [],
-  settings: { hintReception: "", hintPoint: "", idleMinutes: 30, checkDigit: true },
+  settings: { hintReception: "", hintPoint: "", idleMinutes: 30 },
 };
 
 const strip = (u: User): SessionUser => {
@@ -117,7 +118,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const u = db.users.find((x) => x.username.toLowerCase() === username.trim().toLowerCase());
       if (!u || u.password !== password) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
       if (!u.active) return { error: "هذا الحساب موقوف. تواصل مع إدارة الموقع" };
-      if (u.role !== "ADMIN" && center && !u.centers.includes(center)) {
+      if (isStaff(u.role) && center && !u.centers.includes(center)) {
         const name = db.centers.find((c) => c.code === center)?.name;
         return { error: `حسابك غير مسموح له بالعمل في ${name}` };
       }
@@ -137,14 +138,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   /* ===== الإدخال ===== */
 
   const addEntry = useCallback(
-    (input: { nid: string; name?: string; projects: string[] }): AddEntryResult => {
+    (input: { nid: string; projects: string[] }): AddEntryResult => {
       if (!user || !center) return { ok: false, error: "انتهت الجلسة، سجّل الدخول من جديد" };
       if (!input.projects.length) return { ok: false, error: "اختر مشروعاً واحداً على الأقل" };
       const today = todayKey();
       const now = new Date().toISOString();
       const kind = user.role === "POINT" ? "POINT" : "RECEPTION";
       const isNew = !db.beneficiaries[input.nid];
-      const beneficiary: Beneficiary = db.beneficiaries[input.nid] ?? { nid: input.nid, name: input.name?.trim() ?? "", createdAt: now };
+      const beneficiary: Beneficiary = db.beneficiaries[input.nid] ?? { nid: input.nid, name: "", createdAt: now };
 
       if (kind === "RECEPTION") {
         const existing = db.entries.find(

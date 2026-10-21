@@ -34,11 +34,9 @@ export function BeneficiaryCard({
           <UserRound className="size-6" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className={beneficiary.name ? "text-xl font-bold leading-snug sm:text-2xl" : "text-xl font-semibold text-muted"}>
-            {beneficiary.name || "بدون اسم"}
-          </h2>
+          <h2 className="num text-xl font-bold leading-snug tracking-wider sm:text-2xl">{beneficiary.name || beneficiary.nid}</h2>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted">
-            <span className="num font-semibold tracking-wider text-ink">{beneficiary.nid}</span>
+            {beneficiary.name && <span className="num font-semibold tracking-wider text-ink">{beneficiary.nid}</span>}
             <span>
               مسجلة منذ <span className="num">{formatDate(beneficiary.createdAt)}</span>
             </span>
@@ -103,7 +101,7 @@ export function BeneficiaryCard({
         </div>
       )}
 
-      <Dialog open={all} onClose={() => setAll(false)} title="سجل الزيارات" description={`${beneficiary.name || "بدون اسم"} · ${beneficiary.nid}`} size="lg">
+      <Dialog open={all} onClose={() => setAll(false)} title="سجل الزيارات" description={beneficiary.name ? `${beneficiary.name} · ${beneficiary.nid}` : beneficiary.nid} size="lg">
         <ul className="-mx-5 divide-y divide-line/60 sm:-mx-6">
           {history.map((e) => (
             <HistoryRow key={e.id} e={e} db={db} />

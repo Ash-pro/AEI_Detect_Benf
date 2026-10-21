@@ -6,7 +6,6 @@ import { PageHead } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldHint, Input, Label, Textarea } from "@/components/ui/field";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { userName } from "@/lib/queries";
@@ -55,18 +54,12 @@ export default function SettingsPage() {
         </Card>
 
         <Card className="space-y-5 p-5">
-          <h2 className="text-lg font-bold">الأمان والإدخال</h2>
+          <h2 className="text-lg font-bold">الأمان</h2>
           <div>
             <Label htmlFor="idle">الخروج التلقائي بعد عدم النشاط (دقيقة)</Label>
             <Input id="idle" type="number" dir="ltr" min={5} max={240} className="num max-w-[160px] text-start" value={s.idleMinutes} onChange={(e) => setS({ ...s, idleMinutes: Number(e.target.value) })} />
           </div>
-          <div className="flex items-center justify-between gap-4 rounded-xl bg-sunken px-4 py-3">
-            <div>
-              <div className="font-semibold">فحص خانة الضبط في رقم الهوية</div>
-              <div className="text-xs text-muted">يرفض الأرقام التي فيها خطأ كتابة. عطّله إذا ظهرت هويات صحيحة مرفوضة</div>
-            </div>
-            <Switch checked={s.checkDigit} onChange={(v) => setS({ ...s, checkDigit: v })} label="فحص خانة الضبط" />
-          </div>
+          <FieldHint>رقم الهوية: الشرط الوحيد أن يكون 9 أرقام بالضبط.</FieldHint>
         </Card>
 
         <Card className="overflow-hidden lg:col-span-2">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, Eye, EyeOff, KeyRound, RefreshCw, ShieldCheck, Stethoscope, Store, TriangleAlert } from "lucide-react";
+import { Check, ClipboardList, Copy, Eye, EyeOff, KeyRound, RefreshCw, ShieldCheck, Stethoscope, Store, TriangleAlert } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckBox } from "@/components/ui/check";
@@ -10,6 +10,7 @@ import { FieldError, FieldHint, Input, Label } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { HistoryRow } from "@/components/entry/history";
 import { useStore } from "@/lib/store";
+import { isStaff } from "@/lib/roles";
 import { allProjects, lastActivity } from "@/lib/queries";
 import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatDate, formatTime, sinceText, todayKey, uuid } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { cn, formatDate, formatTime, sinceText, todayKey, uuid } from "@/lib/uti
 export const ROLE_META: Record<Role, { label: string; desc: string; icon: typeof Store; cls: string }> = {
   RECEPTION: { label: "استقبال", desc: "يدخل حالة ولي الأمر ويختار المشاريع", icon: Store, cls: "bg-info-soft text-info" },
   POINT: { label: "نقطة مشروع", desc: "يدخل كل حالة يخدمها في مشروعه", icon: Stethoscope, cls: "bg-ok-soft text-ok" },
+  SUPERVISOR: { label: "مشرف", desc: "يرى سجل الأيام وتفاصيلها والتصدير فقط", icon: ClipboardList, cls: "bg-warn-soft text-warn" },
   ADMIN: { label: "أدمن", desc: "لوحة التحكم الكاملة وإدارة الموقع", icon: ShieldCheck, cls: "bg-brand-soft text-brand" },
 };
 
@@ -109,7 +111,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
     if (!/^[a-z0-9._-]{3,30}$/.test(f.username)) er.username = "3 أحرف على الأقل: حروف إنجليزية صغيرة وأرقام و . _ - فقط";
     if (!isEdit && f.password.length < 6) er.password = "كلمة المرور 6 أحرف على الأقل";
     if (isEdit && newPass && newPass.length < 6) er.password = "كلمة المرور 6 أحرف على الأقل";
-    if (f.role !== "ADMIN" && !f.centers.length) er.centers = "اختر مركزاً واحداً على الأقل";
+    if (isStaff(f.role) && !f.centers.length) er.centers = "اختر مركزاً واحداً على الأقل";
     if (f.role === "POINT" && !f.projects.length) er.projects = "اختر مشروعاً واحداً على الأقل";
     setErrors(er);
     if (Object.keys(er).length) return;
@@ -117,7 +119,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
       ...f,
       fullName: f.fullName.trim(),
       password: isEdit && newPass ? newPass : f.password,
-      centers: f.role === "ADMIN" ? (["GAZA", "KHY"] as CenterCode[]) : f.centers,
+      centers: isStaff(f.role) ? f.centers : (["GAZA", "KHY"] as CenterCode[]),
       projects: f.role === "POINT" ? f.projects : [],
     };
     const e = saveUser(final);
@@ -182,7 +184,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
           <legend className="mb-2 text-sm font-semibold">
             نوع الحساب <span className="text-bad">*</span>
           </legend>
-          <div className="grid gap-2.5 sm:grid-cols-3" role="radiogroup">
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" role="radiogroup">
             {(Object.keys(ROLE_META) as Role[]).map((r) => {
               const m = ROLE_META[r];
               const on = f.role === r;
@@ -282,7 +284,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
           <FieldError>{errors.password}</FieldError>
         </div>
 
-        {f.role !== "ADMIN" && (
+        {isStaff(f.role) && (
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">
               المراكز المسموحة <span className="text-bad">*</span>
@@ -492,7 +494,7 @@ export function UserDetailDialog({ user, onClose, onEdit }: { user: User | null;
           ) : (
             <span className="rounded-lg bg-sunken px-2 py-0.5 text-xs font-bold text-muted">موقوف</span>
           )}
-          {user.role !== "ADMIN" &&
+          {isStaff(user.role) &&
             user.centers.map((c) => (
               <span key={c} className="rounded-lg border border-line px-2 py-0.5 text-xs font-bold">
                 {db.centers.find((x) => x.code === c)?.name}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TimerReset } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { homePath, isBackOffice, isStaff } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 
 const WARN_SECONDS = 60;
@@ -16,14 +17,14 @@ export function AppGate({ children, area }: { children: React.ReactNode; area: "
   const [warn, setWarn] = useState<number | null>(null);
   const idle = db.settings.idleMinutes || 30;
 
-  const wrongArea = user && ((area === "admin") !== (user.role === "ADMIN"));
+  const wrongArea = user && ((area === "admin") !== isBackOffice(user.role));
 
   useEffect(() => {
     if (!ready) return;
     if (!user && !center) router.replace("/setup");
     else if (!user) router.replace("/login");
-    else if (wrongArea) router.replace(user.role === "ADMIN" ? "/admin" : "/entry");
-    else if (user.role !== "ADMIN" && !center) router.replace("/setup");
+    else if (wrongArea) router.replace(homePath(user.role));
+    else if (isStaff(user.role) && !center) router.replace("/setup");
   }, [ready, center, user, wrongArea, router]);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export function AppGate({ children, area }: { children: React.ReactNode; area: "
     };
   }, [user, logout, router, idle]);
 
-  if (!ready || !user || wrongArea || (user.role !== "ADMIN" && !center)) return <div className="min-h-dvh" />;
+  if (!ready || !user || wrongArea || (isStaff(user.role) && !center)) return <div className="min-h-dvh" />;
 
   return (
     <>

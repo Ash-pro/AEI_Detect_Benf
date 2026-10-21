@@ -9,12 +9,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
 import { useStore } from "@/lib/store";
+import { homePath } from "@/lib/roles";
 import { DEMO_PASSWORD } from "@/lib/mock-data";
 import { centerName, projectName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { CENTER_STYLE } from "@/components/shell/center-theme";
 
-const DEMO = ["admin", "reception.khy", "reception.gaza", "unicef.khy", "wfp.gaza", "multi.khy"];
+const DEMO = ["admin", "supervisor", "reception.khy", "reception.gaza", "unicef.khy", "wfp.gaza", "multi.khy"];
 
 /** الشاشة 2 — تسجيل الدخول */
 function LoginInner() {
@@ -28,7 +29,7 @@ function LoginInner() {
 
   useEffect(() => {
     if (!ready) return;
-    if (user) router.replace(user.role === "ADMIN" ? "/admin" : "/entry");
+    if (user) router.replace(homePath(user.role));
     else if (!center) router.replace("/setup");
   }, [ready, center, user, router]);
 
@@ -37,7 +38,7 @@ function LoginInner() {
     if (!username || !password) return setError("أدخل اسم المستخدم وكلمة المرور");
     const r = login(username, password);
     if (r.error) return setError(r.error);
-    router.replace(r.user!.role === "ADMIN" ? "/admin" : "/entry");
+    router.replace(homePath(r.user!.role));
   }
 
   if (!ready || !center) return <div className="min-h-dvh" />;
@@ -142,6 +143,8 @@ function LoginInner() {
                 <span className="ltr">{u!.username}</span> ·{" "}
                 {u!.role === "ADMIN"
                   ? "أدمن"
+                  : u!.role === "SUPERVISOR"
+                    ? "مشرف — سجل الأيام"
                   : u!.role === "RECEPTION"
                     ? `استقبال ${u!.centers.map((c) => centerName(db, c, true)).join(" و")}`
                     : `نقطة ${u!.projects.map((p) => projectName(db, p)).join(" + ")} · ${centerName(db, u!.centers[0], true)}`}

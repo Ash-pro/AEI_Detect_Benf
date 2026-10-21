@@ -7,9 +7,9 @@ import { BrandMark } from "@/components/shell/brand-mark";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; supervisor?: boolean }[] = [
   { href: "/admin", label: "الرئيسية", icon: LayoutDashboard },
-  { href: "/admin/days", label: "سجل الأيام", icon: CalendarDays },
+  { href: "/admin/days", label: "سجل الأيام", icon: CalendarDays, supervisor: true },
   { href: "/admin/reports", label: "التقارير", icon: LineChart },
   { href: "/admin/users", label: "المستخدمون", icon: Users },
   { href: "/admin/projects", label: "المشاريع والمراكز", icon: FolderKanban },
@@ -21,6 +21,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { user, logout } = useStore();
+  const nav = user?.role === "SUPERVISOR" ? NAV.filter((n) => n.supervisor) : NAV;
   const isActive = (href: string) => (href === "/admin" ? path === "/admin" : path.startsWith(href)) || (href === "/admin/days" && path.startsWith("/admin/day"));
 
   return (
@@ -31,7 +32,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <BrandMark />
           </div>
           <nav className="flex-1 space-y-0.5 px-3" aria-label="لوحة التحكم">
-            {NAV.map((n) => (
+            {nav.map((n) => (
               <Link
                 key={n.href}
                 href={n.href}
@@ -84,7 +85,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 pb-2" aria-label="لوحة التحكم">
-            {NAV.map((n) => (
+            {nav.map((n) => (
               <Link
                 key={n.href}
                 href={n.href}
