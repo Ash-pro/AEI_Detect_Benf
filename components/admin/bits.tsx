@@ -79,7 +79,7 @@ export function StatCard({
       <div className={cn("num mt-2 text-[34px] font-bold leading-none", cls)}>{value.toLocaleString("en-US")}</div>
       {delta !== undefined && delta !== null && (
         <div className={cn("mt-2 text-xs font-semibold", delta > 0 ? "text-ok" : delta < 0 ? "text-bad" : "text-muted")}>
-          {delta === 0 ? "مثل أمس" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)} عن آخر يوم عمل`}
+          {delta === 0 ? "مثل يوم العمل السابق" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)} عن يوم العمل السابق`}
         </div>
       )}
     </div>

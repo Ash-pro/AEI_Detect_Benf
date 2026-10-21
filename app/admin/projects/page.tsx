@@ -48,7 +48,61 @@ export default function ProjectsPage() {
         }
       />
 
-      <Card className="overflow-hidden">
+      {/* بطاقات للجوال */}
+      <div className="space-y-3 md:hidden">
+        {list.map((p, i) => (
+          <Card key={p.code} className={cn("p-4", !p.active && "bg-sunken/40")}>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
+                <code className="mt-0.5 block px-2 text-start text-[11px] text-muted">{p.code}</code>
+              </div>
+              <Switch
+                checked={p.active}
+                onChange={(v) => {
+                  saveProject({ ...p, active: v });
+                  toast(v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
+                }}
+                label={`تفعيل ${p.name}`}
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {db.centers.map((c) => (
+                <button
+                  key={c.code}
+                  role="checkbox"
+                  aria-checked={p.centers.includes(c.code)}
+                  onClick={() => toggleCenter(p, c.code)}
+                  className={cn(
+                    "focus-ring inline-flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 text-sm font-bold",
+                    p.centers.includes(c.code) ? "border-brand bg-brand-soft text-brand" : "border-line text-muted",
+                  )}
+                >
+                  <span className={cn("grid size-4 place-items-center rounded border-2", p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line")}>
+                    {p.centers.includes(c.code) && <Check className="size-3" strokeWidth={3} />}
+                  </span>
+                  {c.short}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-muted">
+              <span>
+                موظفو النقطة <b className="num text-ink">{staffCount(p.code)}</b> · خدمات الشهر <b className="num text-ink">{monthCounts.get(p.code) ?? 0}</b>
+              </span>
+              <span className="flex gap-1">
+                <button disabled={i === 0} onClick={() => moveProject(p.code, -1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`رفع ${p.name}`}>
+                  <ArrowUp className="size-4" />
+                </button>
+                <button disabled={i === list.length - 1} onClick={() => moveProject(p.code, 1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`إنزال ${p.name}`}>
+                  <ArrowDown className="size-4" />
+                </button>
+              </span>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-sunken/70 text-xs text-muted">
@@ -90,7 +144,7 @@ export default function ProjectsPage() {
                   </td>
                   <td className="px-3 py-2.5">
                     <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
-                    <code className="ltr mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
+                    <code className="mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
                   </td>
                   {db.centers.map((c) => (
                     <td key={c.code} className="px-3 py-2.5 text-center">

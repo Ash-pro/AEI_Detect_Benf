@@ -72,7 +72,7 @@ export default function AdminHome() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full text-sm sm:min-w-[560px]">
               <thead className="bg-sunken/70 text-xs text-muted">
                 <tr>
                   <th className="px-5 py-2.5 text-start font-semibold">المشروع</th>
@@ -98,13 +98,13 @@ export default function AdminHome() {
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
                         <span className="num w-9 font-bold">{r.referred}</span>
-                        <Bar value={r.referred} max={max} />
+                        <div className="hidden flex-1 sm:block"><Bar value={r.referred} max={max} /></div>
                       </div>
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
                         <span className="num w-9 font-bold">{r.served}</span>
-                        <Bar value={r.served} max={max} tone="ok" />
+                        <div className="hidden flex-1 sm:block"><Bar value={r.served} max={max} tone="ok" /></div>
                       </div>
                     </td>
                     <td className="pe-4">

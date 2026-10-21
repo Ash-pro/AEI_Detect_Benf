@@ -2,10 +2,15 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import { ToastProvider } from "@/components/ui/toast";
+import { PwaInstall } from "@/components/pwa/install";
 
 export const metadata: Metadata = {
   title: "استقبال المستفيدين — أرض الإنسان",
   description: "نظام استقبال وتوجيه المستفيدين",
+  applicationName: "استقبال AEI",
+  appleWebApp: { capable: true, title: "استقبال AEI", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
@@ -27,7 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-dvh font-sans" suppressHydrationWarning>
         <StoreProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            {children}
+            <PwaInstall />
+          </ToastProvider>
         </StoreProvider>
       </body>
     </html>
