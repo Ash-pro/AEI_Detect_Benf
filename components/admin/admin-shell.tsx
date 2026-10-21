@@ -11,8 +11,8 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; supervis
   { href: "/admin", label: "الرئيسية", icon: LayoutDashboard },
   { href: "/admin/days", label: "سجل الأيام", icon: CalendarDays, supervisor: true },
   { href: "/admin/reports", label: "التقارير", icon: LineChart },
-  { href: "/admin/users", label: "المستخدمون", icon: Users },
-  { href: "/admin/projects", label: "المشاريع والمراكز", icon: FolderKanban },
+  { href: "/admin/users", label: "المستخدمون", icon: Users, supervisor: true },
+  { href: "/admin/projects", label: "المشاريع والمراكز", icon: FolderKanban, supervisor: true },
   { href: "/admin/beneficiaries", label: "المستفيدون", icon: Search },
   { href: "/admin/settings", label: "الإعدادات", icon: Settings },
 ];

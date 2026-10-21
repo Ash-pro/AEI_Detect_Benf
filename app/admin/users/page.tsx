@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
-import { isStaff } from "@/lib/roles";
+import { canManageUser, isStaff } from "@/lib/roles";
 import { centerName, lastActivity, projectName } from "@/lib/queries";
 import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatTime, normalizeArabicName, sinceText, todayKey } from "@/lib/utils";
@@ -46,9 +46,14 @@ export default function UsersPage() {
     return m;
   }, [db.entries, today]);
 
+  const isSup = me?.role === "SUPERVISOR";
+  // المشرف يرى كل المستخدمين ما عدا حسابات الأدمن
+  const visibleUsers = useMemo(() => (isSup ? db.users.filter((u) => u.role !== "ADMIN") : db.users), [db.users, isSup]);
+  const can = (u: User) => canManageUser(me?.role, u.role) && (me?.role === "ADMIN" || u.id !== me?.id);
+
   const users = useMemo(() => {
     const term = normalizeArabicName(q.toLowerCase());
-    return db.users
+    return visibleUsers
       .filter((u) => role === "ALL" || u.role === role)
       .filter((u) => center === "ALL" || u.centers.includes(center))
       .filter((u) => status === "ALL" || (status === "ACTIVE" ? u.active : !u.active))
@@ -60,11 +65,11 @@ export default function UsersPage() {
           u.projects.some((p) => projectName(db, p).toLowerCase().includes(term)),
       )
       .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || Number(b.active) - Number(a.active) || a.fullName.localeCompare(b.fullName, "ar"));
-  }, [db, q, role, center, status]);
+  }, [db, visibleUsers, q, role, center, status]);
 
   const counts = {
-    all: db.users.length,
-    active: db.users.filter((u) => u.active).length,
+    all: visibleUsers.length,
+    active: visibleUsers.filter((u) => u.active).length,
     reception: db.users.filter((u) => u.role === "RECEPTION").length,
     point: db.users.filter((u) => u.role === "POINT").length,
     admin: db.users.filter((u) => u.role === "ADMIN").length,
@@ -72,6 +77,7 @@ export default function UsersPage() {
   };
 
   function toggleActive(u: User) {
+    if (!canManageUser(me?.role, u.role)) return toast("لا تملك صلاحية تعديل هذا الحساب", "bad");
     if (u.id === me?.id) return toast("لا يمكنك إيقاف حسابك أنت", "bad");
     if (u.role === "ADMIN" && u.active && db.users.filter((x) => x.role === "ADMIN" && x.active).length <= 1)
       return toast("لا يمكن إيقاف آخر حساب أدمن مفعّل", "bad");
@@ -104,13 +110,15 @@ export default function UsersPage() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className={cn("mb-4 grid grid-cols-2 gap-3", isSup ? "lg:grid-cols-3" : "lg:grid-cols-4")}>
         {[
           { label: "استقبال", value: counts.reception, r: "RECEPTION" as Role },
           { label: "نقاط المشاريع", value: counts.point, r: "POINT" as Role },
           { label: "مشرفون", value: counts.supervisor, r: "SUPERVISOR" as Role },
           { label: "أدمن", value: counts.admin, r: "ADMIN" as Role },
-        ].map((t) => (
+        ]
+          .filter((t) => !(isSup && t.r === "ADMIN"))
+          .map((t) => (
           <button
             key={t.r}
             onClick={() => setRole(role === t.r ? "ALL" : t.r)}
@@ -148,7 +156,7 @@ export default function UsersPage() {
               { value: "RECEPTION", label: "استقبال" },
               { value: "POINT", label: "نقاط" },
               { value: "SUPERVISOR", label: "مشرف" },
-              { value: "ADMIN", label: "أدمن" },
+              ...(isSup ? [] : [{ value: "ADMIN" as RoleFilter, label: "أدمن" }]),
             ]}
           />
           <select
@@ -238,7 +246,7 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <Switch checked={u.active} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
+                      <Switch checked={u.active} disabled={!can(u)} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
                     </td>
                     <td className="px-2 py-3">
                       <RowMenu
@@ -248,6 +256,7 @@ export default function UsersPage() {
                         onToggle={() => toggleActive(u)}
                         onDelete={() => setDeleting(u)}
                         active={u.active}
+                        manage={can(u)}
                       />
                     </td>
                   </tr>
@@ -283,7 +292,7 @@ export default function UsersPage() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
-                <Switch checked={u.active} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
+                <Switch checked={u.active} disabled={!can(u)} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
                 <RowMenu
                   onView={() => setViewing(u)}
                   onEdit={() => openEdit(u)}
@@ -291,6 +300,7 @@ export default function UsersPage() {
                   onToggle={() => toggleActive(u)}
                   onDelete={() => setDeleting(u)}
                   active={u.active}
+                  manage={can(u)}
                 />
               </div>
             </li>
@@ -308,7 +318,7 @@ export default function UsersPage() {
       <UserFormDialog open={formOpen} user={editing} onClose={() => setFormOpen(false)} />
       <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />
       <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />
-      <UserDetailDialog user={viewing} onClose={() => setViewing(null)} onEdit={openEdit} />
+      <UserDetailDialog user={viewing} onClose={() => setViewing(null)} onEdit={viewing && can(viewing) ? openEdit : undefined} />
     </>
   );
 }
@@ -320,6 +330,7 @@ function RowMenu({
   onToggle,
   onDelete,
   active,
+  manage = true,
 }: {
   onView: () => void;
   onEdit: () => void;
@@ -327,6 +338,7 @@ function RowMenu({
   onToggle: () => void;
   onDelete: () => void;
   active: boolean;
+  manage?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -357,6 +369,8 @@ function RowMenu({
             <UserRound className="size-4 text-muted" />
             عرض التفاصيل
           </button>
+          {manage && (
+            <>
           <button className={item} onClick={run(onEdit)}>
             <Pencil className="size-4 text-muted" />
             تعديل
@@ -373,6 +387,8 @@ function RowMenu({
             <Trash2 className="size-4" />
             حذف
           </button>
+            </>
+          )}
         </div>
       )}
     </div>

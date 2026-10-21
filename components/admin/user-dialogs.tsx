@@ -184,8 +184,8 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
           <legend className="mb-2 text-sm font-semibold">
             نوع الحساب <span className="text-bad">*</span>
           </legend>
-          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" role="radiogroup">
-            {(Object.keys(ROLE_META) as Role[]).map((r) => {
+          <div className={cn("grid grid-cols-2 gap-2.5", me?.role === "ADMIN" && "lg:grid-cols-4")} role="radiogroup">
+            {(Object.keys(ROLE_META) as Role[]).filter((r) => me?.role === "ADMIN" || isStaff(r)).map((r) => {
               const m = ROLE_META[r];
               const on = f.role === r;
               return (
@@ -459,7 +459,7 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
 
 /* ===== تفاصيل مستخدم ===== */
 
-export function UserDetailDialog({ user, onClose, onEdit }: { user: User | null; onClose: () => void; onEdit: (u: User) => void }) {
+export function UserDetailDialog({ user, onClose, onEdit }: { user: User | null; onClose: () => void; onEdit?: (u: User) => void }) {
   const { db } = useStore();
   if (!user) return null;
   const mine = db.entries.filter((e) => e.userId === user.id);
@@ -481,9 +481,11 @@ export function UserDetailDialog({ user, onClose, onEdit }: { user: User | null;
       title={user.fullName}
       description={user.username}
       footer={
-        <Button size="lg" onClick={() => onEdit(user)}>
-          تعديل المستخدم
-        </Button>
+        onEdit ? (
+          <Button size="lg" onClick={() => onEdit(user)}>
+            تعديل المستخدم
+          </Button>
+        ) : undefined
       }
     >
       <div className="space-y-5">
