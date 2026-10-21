@@ -126,3 +126,52 @@ export function storageSet(key: string, value: unknown) {
     /* تجاهل */
   }
 }
+
+/* ===== تواريخ بصيغة YYYY-MM-DD ===== */
+
+export function addDays(key: string, n: number): string {
+  const d = new Date(key + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+const WEEKDAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+export function weekday(key: string): string {
+  return WEEKDAYS[new Date(key + "T12:00:00Z").getUTCDay()];
+}
+
+export function dayNum(key: string): string {
+  const [, m, d] = key.split("-");
+  return `${d}/${m}`;
+}
+
+export function dayFull(key: string): string {
+  const [y, m, d] = key.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+/** "الثلاثاء 21/10" */
+export function dayLabel(key: string): string {
+  return `${weekday(key)} ${dayNum(key)}`;
+}
+
+export function monthKey(key: string): string {
+  return key.slice(0, 7);
+}
+
+/** "أكتوبر 2026" */
+export function monthLabel(mk: string): string {
+  const [y, m] = mk.split("-");
+  return `${MONTHS[Number(m) - 1]} ${y}`;
+}
+
+/** "حالة" مع قواعد العدد العربية */
+export function casesText(n: number): string {
+  if (n === 0) return "لا حالات";
+  if (n === 1) return "حالة واحدة";
+  if (n === 2) return "حالتان";
+  if (n <= 10) return `${n} حالات`;
+  return `${n} حالة`;
+}

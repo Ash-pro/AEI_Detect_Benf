@@ -1,0 +1,260 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, Building2, Check, Plus } from "lucide-react";
+import { PageHead } from "@/components/admin/bits";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { CheckBox } from "@/components/ui/check";
+import { Dialog } from "@/components/ui/dialog";
+import { FieldError, FieldHint, Input, Label } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/toast";
+import { CENTER_STYLE } from "@/components/shell/center-theme";
+import { useStore } from "@/lib/store";
+import { allProjects } from "@/lib/queries";
+import type { CenterCode, Project } from "@/lib/types";
+import { cn, todayKey } from "@/lib/utils";
+
+/** الشاشة 9 — المشاريع والمراكز */
+export default function ProjectsPage() {
+  const { db, saveProject, moveProject, renameCenter } = useStore();
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const list = allProjects(db);
+  const month = todayKey().slice(0, 7);
+  const monthCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    db.entries.forEach((e) => e.date.startsWith(month) && e.kind === "POINT" && e.projects.forEach((p) => m.set(p, (m.get(p) ?? 0) + 1)));
+    return m;
+  }, [db.entries, month]);
+  const staffCount = (code: string) => db.users.filter((u) => u.projects.includes(code) && u.active).length;
+
+  const toggleCenter = (p: Project, c: CenterCode) => {
+    const centers = p.centers.includes(c) ? p.centers.filter((x) => x !== c) : [...p.centers, c];
+    saveProject({ ...p, centers });
+  };
+
+  return (
+    <>
+      <PageHead
+        title="المشاريع والمراكز"
+        sub="ترتيب المشاريع هنا هو ترتيبها في مربعات الاختيار عند الموظفين"
+        actions={
+          <Button size="lg" onClick={() => setAdding(true)}>
+            <Plus className="size-5" />
+            مشروع جديد
+          </Button>
+        }
+      />
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-sunken/70 text-xs text-muted">
+              <tr>
+                <th className="w-20 px-4 py-3 text-start font-semibold">الترتيب</th>
+                <th className="px-3 py-3 text-start font-semibold">المشروع</th>
+                {db.centers.map((c) => (
+                  <th key={c.code} className="px-3 py-3 text-center font-semibold">
+                    يظهر في {c.short}
+                  </th>
+                ))}
+                <th className="px-3 py-3 text-center font-semibold">موظفو النقطة</th>
+                <th className="px-3 py-3 text-center font-semibold">خدمات الشهر</th>
+                <th className="px-3 py-3 text-center font-semibold">مفعّل</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line/60">
+              {list.map((p, i) => (
+                <tr key={p.code} className={cn(!p.active && "bg-sunken/40")}>
+                  <td className="px-4 py-2.5">
+                    <div className="flex gap-1">
+                      <button
+                        disabled={i === 0}
+                        onClick={() => moveProject(p.code, -1)}
+                        className="focus-ring grid size-8 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
+                        aria-label={`رفع ${p.name}`}
+                      >
+                        <ArrowUp className="size-4" />
+                      </button>
+                      <button
+                        disabled={i === list.length - 1}
+                        onClick={() => moveProject(p.code, 1)}
+                        className="focus-ring grid size-8 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
+                        aria-label={`إنزال ${p.name}`}
+                      >
+                        <ArrowDown className="size-4" />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
+                    <code className="ltr mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
+                  </td>
+                  {db.centers.map((c) => (
+                    <td key={c.code} className="px-3 py-2.5 text-center">
+                      <button
+                        role="checkbox"
+                        aria-checked={p.centers.includes(c.code)}
+                        aria-label={`${p.name} في ${c.name}`}
+                        onClick={() => toggleCenter(p, c.code)}
+                        className={cn(
+                          "focus-ring mx-auto grid size-7 place-items-center rounded-md border-2",
+                          p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line",
+                        )}
+                      >
+                        {p.centers.includes(c.code) && <Check className="size-4" strokeWidth={3} />}
+                      </button>
+                    </td>
+                  ))}
+                  <td className="num px-3 py-2.5 text-center font-semibold">{staffCount(p.code)}</td>
+                  <td className="num px-3 py-2.5 text-center font-semibold">{monthCounts.get(p.code) ?? 0}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    <Switch
+                      checked={p.active}
+                      onChange={(v) => {
+                        saveProject({ ...p, active: v });
+                        toast(v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
+                      }}
+                      label={`تفعيل ${p.name}`}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <h2 className="mb-3 mt-10 text-lg font-bold">المراكز</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {db.centers.map((c) => (
+          <CenterCard key={c.code} code={c.code} name={c.name} onSave={(n) => (renameCenter(c.code, n), toast("تم حفظ اسم المركز"))} />
+        ))}
+      </div>
+
+      <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
+    </>
+  );
+}
+
+function NameCell({ project, onSave }: { project: Project; onSave: (name: string) => void }) {
+  const [v, setV] = useState(project.name);
+  const dirty = v.trim() !== project.name && v.trim();
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        aria-label="اسم المشروع"
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && dirty && onSave(v.trim())}
+        className="h-9 w-full max-w-[220px] rounded-lg border border-transparent bg-transparent px-2 font-bold hover:border-line focus:border-brand focus:bg-surface focus:outline-hidden"
+      />
+      {dirty && (
+        <Button size="sm" onClick={() => onSave(v.trim())}>
+          حفظ
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function CenterCard({ code, name, onSave }: { code: CenterCode; name: string; onSave: (n: string) => void }) {
+  const [v, setV] = useState(name);
+  const st = CENTER_STYLE[code];
+  return (
+    <Card className="relative overflow-hidden p-5">
+      <span className={cn("absolute inset-y-0 start-0 w-1.5", st.strip)} />
+      <div className="flex items-center gap-3">
+        <span className={cn("grid size-11 place-items-center rounded-xl", st.soft, st.text)}>
+          <Building2 className="size-6" />
+        </span>
+        <div className="flex-1">
+          <Label htmlFor={`c-${code}`}>اسم المركز</Label>
+          <div className="flex gap-2">
+            <Input id={`c-${code}`} value={v} onChange={(e) => setV(e.target.value)} />
+            <Button variant="secondary" size="lg" disabled={!v.trim() || v.trim() === name} onClick={() => onSave(v)}>
+              حفظ
+            </Button>
+          </div>
+          <FieldHint>
+            الرمز <code className="ltr">{code}</code> · لون المركز ثابت في الواجهة
+          </FieldHint>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { db, saveProject } = useStore();
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [centers, setCenters] = useState<CenterCode[]>(["GAZA", "KHY"]);
+  const [err, setErr] = useState("");
+
+  function submit() {
+    const c = code.trim().toUpperCase();
+    if (!name.trim()) return setErr("اكتب اسم المشروع");
+    if (!/^[A-Z0-9_]{2,12}$/.test(c)) return setErr("الرمز من 2 إلى 12 حرفاً إنجليزياً كبيراً أو أرقام");
+    if (db.projects.some((p) => p.code === c)) return setErr("هذا الرمز مستخدم لمشروع آخر");
+    if (!centers.length) return setErr("اختر مركزاً واحداً على الأقل");
+    saveProject({ code: c, name: name.trim(), active: true, order: db.projects.length + 1, centers });
+    toast(`تمت إضافة ${name.trim()}`);
+    setName("");
+    setCode("");
+    setErr("");
+    onClose();
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="مشروع جديد"
+      footer={
+        <>
+          <Button variant="secondary" size="lg" onClick={onClose}>
+            إلغاء
+          </Button>
+          <Button size="lg" onClick={submit}>
+            إضافة المشروع
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="np-name" required>
+            اسم المشروع كما يظهر للموظفين
+          </Label>
+          <Input id="np-name" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <Label htmlFor="np-code" required>
+            الرمز
+          </Label>
+          <Input id="np-code" dir="ltr" className="text-start uppercase" placeholder="مثال: IMC" value={code} onChange={(e) => setCode(e.target.value)} />
+          <FieldHint>يُستخدم في التقارير وملفات Excel، ولا يتغير بعد الإضافة</FieldHint>
+        </div>
+        <div>
+          <Label>يظهر في</Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {db.centers.map((c) => (
+              <CheckBox
+                key={c.code}
+                checked={centers.includes(c.code)}
+                onChange={() => setCenters((l) => (l.includes(c.code) ? l.filter((x) => x !== c.code) : [...l, c.code]))}
+              >
+                {c.name}
+              </CheckBox>
+            ))}
+          </div>
+        </div>
+        <FieldError>{err}</FieldError>
+      </div>
+    </Dialog>
+  );
+}

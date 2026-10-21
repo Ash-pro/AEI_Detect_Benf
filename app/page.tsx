@@ -2,17 +2,17 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "@/lib/session";
+import { useStore } from "@/lib/store";
 
 export default function Home() {
-  const { ready, center, user, project } = useSession();
+  const { ready, center, user } = useStore();
   const router = useRouter();
   useEffect(() => {
     if (!ready) return;
-    if (!center) router.replace("/setup");
+    if (user?.role === "ADMIN") router.replace("/admin");
+    else if (!center) router.replace("/setup");
     else if (!user) router.replace("/login");
-    else if (user.role === "PROJECT" && !project) router.replace("/select-project");
-    else router.replace("/verify");
-  }, [ready, center, user, project, router]);
+    else router.replace("/entry");
+  }, [ready, center, user, router]);
   return <div className="min-h-dvh" />;
 }

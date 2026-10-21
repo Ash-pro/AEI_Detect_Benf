@@ -1,16 +1,6 @@
 export type CenterCode = "GAZA" | "KHY";
-
-export type ProjectCode =
-  | "WFP"
-  | "MAP"
-  | "WHH"
-  | "UNICEF"
-  | "STC"
-  | "CELIAC"
-  | "MECA"
-  | "TAAWON";
-
-export type Role = "RECEPTION" | "PROJECT";
+export type Role = "RECEPTION" | "POINT" | "ADMIN";
+export type EntryKind = "RECEPTION" | "POINT";
 
 export interface Center {
   code: CenterCode;
@@ -19,100 +9,69 @@ export interface Center {
 }
 
 export interface Project {
-  code: ProjectCode;
+  code: string;
   name: string;
-  nameAr: string;
-  allowException: boolean;
-}
-
-export interface IdentityType {
-  id: string;
-  name: string;
-  isSystem: boolean;
+  active: boolean;
+  order: number;
+  centers: CenterCode[];
 }
 
 export interface User {
+  id: string;
   username: string;
+  password: string;
   fullName: string;
   role: Role;
   centers: CenterCode[];
-  projects: ProjectCode[];
-}
-
-export interface Beneficiary {
-  id: string;
-  nationalId: string;
-  typeId: string;
-  name: string;
-  phone: string;
-  birthDate?: string;
-  homeCenter: CenterCode;
-  householdId?: string;
+  projects: string[];
+  active: boolean;
   createdAt: string;
 }
 
-export type EnrollmentStatus = "ACTIVE" | "PENDING_APPROVAL" | "CLOSED";
-
-export interface Enrollment {
-  id: string;
-  beneficiaryId: string;
-  project: ProjectCode;
-  center: CenterCode;
-  status: EnrollmentStatus;
-  enrolledAt: string;
-  closedAt?: string;
-  closedReason?: string;
+export interface Beneficiary {
+  nid: string;
+  name: string;
+  createdAt: string;
 }
 
-export interface Visit {
+export interface Entry {
   id: string;
-  beneficiaryId: string;
-  seq: number;
-  kind: "NEW" | "FOLLOW_UP";
+  nid: string;
   center: CenterCode;
-  occurredAt: string;
-  referrals: ProjectCode[];
-  receptionist: string;
+  userId: string;
+  kind: EntryKind;
+  at: string; // ISO
+  date: string; // YYYY-MM-DD بتوقيت غزة
+  projects: string[];
+  isNew: boolean;
 }
 
-export interface ServiceRecord {
+export interface ChangeLog {
   id: string;
-  beneficiaryId: string;
-  project: ProjectCode;
-  center: CenterCode;
-  servedAt: string;
-  servedBy: string;
-  source: "POINT" | "EXCEL";
-  exception?: boolean;
+  at: string;
+  userId: string;
+  action: string;
+  detail: string;
 }
 
-export type RestrictionLevel = "WARNING" | "REVIEW_REQUIRED" | "TEMPORARILY_BLOCKED" | "BLOCKED";
-
-export interface Restriction {
-  beneficiaryId: string;
-  level: RestrictionLevel;
-  reason: string;
-  endsAt?: string;
+export interface Settings {
+  hintReception: string;
+  hintPoint: string;
+  idleMinutes: number;
+  checkDigit: boolean;
 }
 
 export interface Db {
-  beneficiaries: Beneficiary[];
-  enrollments: Enrollment[];
-  visits: Visit[];
-  services: ServiceRecord[];
-  restrictions: Restriction[];
-  identityTypes: IdentityType[];
+  version: number;
+  /** يوم توليد البيانات التجريبية */
+  seededOn: string;
+  centers: Center[];
+  projects: Project[];
+  users: User[];
+  beneficiaries: Record<string, Beneficiary>;
+  entries: Entry[];
+  changes: ChangeLog[];
+  settings: Settings;
 }
 
-/** حالة نقطة المشروع (P1–P10) */
-export type PointStatus =
-  | "P1_REFERRED"
-  | "P2_REFERRED_PENDING"
-  | "P3_NOT_REFERRED_TODAY"
-  | "P4_WRONG_PROJECT"
-  | "P5_WRONG_CENTER"
-  | "P6_NO_VISIT"
-  | "P7_UNKNOWN"
-  | "P8_ALREADY_SERVED"
-  | "P9_CLOSED"
-  | "P10_BLOCKED";
+export type SessionUser = Omit<User, "password">;

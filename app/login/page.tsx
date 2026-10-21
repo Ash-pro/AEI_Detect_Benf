@@ -1,77 +1,77 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Info, LogIn, TimerOff } from "lucide-react";
+import { Eye, EyeOff, FlaskConical, LogIn, TimerOff } from "lucide-react";
 import { AuthLayout } from "@/components/shell/auth-layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
-import { CENTERS, USERS } from "@/lib/mock-data";
-import { useSession } from "@/lib/session";
+import { useStore } from "@/lib/store";
+import { DEMO_PASSWORD } from "@/lib/mock-data";
+import { centerName, projectName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { CENTER_STYLE } from "@/components/shell/center-theme";
 
+const DEMO = ["admin", "reception.khy", "reception.gaza", "unicef.khy", "wfp.gaza", "multi.khy"];
+
 /** الشاشة 2 — تسجيل الدخول */
 function LoginInner() {
-  const { ready, center, user, login } = useSession();
+  const { ready, center, user, login, db } = useStore();
   const router = useRouter();
   const params = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const userRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!ready) return;
-    if (!center) router.replace("/setup");
-    else if (user) router.replace("/");
+    if (user) router.replace(user.role === "ADMIN" ? "/admin" : "/entry");
+    else if (!center) router.replace("/setup");
   }, [ready, center, user, router]);
-
-  const c = CENTERS.find((x) => x.code === center);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!username || !password) return setError("أدخل اسم المستخدم وكلمة المرور");
-    setBusy(true);
-    setTimeout(() => {
-      const u = login(username, password);
-      setBusy(false);
-      if (!u) return setError("اسم المستخدم أو كلمة المرور غير صحيحة");
-      if (center && !u.centers.includes(center)) return setError(`حسابك غير مسموح له بالعمل في ${c?.name}`);
-      router.replace(u.role === "PROJECT" && u.projects.length > 1 ? "/select-project" : "/verify");
-    }, 350);
+    const r = login(username, password);
+    if (r.error) return setError(r.error);
+    router.replace(r.user!.role === "ADMIN" ? "/admin" : "/entry");
   }
 
-  if (!ready || !c) return <div className="min-h-dvh" />;
-  const st = CENTER_STYLE[c.code];
+  if (!ready || !center) return <div className="min-h-dvh" />;
+  const st = CENTER_STYLE[center];
+  const demoUsers = DEMO.map((u) => db.users.find((x) => x.username === u)).filter(Boolean);
 
   return (
     <AuthLayout>
       {params.get("idle") && (
         <div className="mb-4 flex items-center gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm font-semibold text-warn">
           <TimerOff className="size-5 shrink-0" />
-          تم تسجيل خروجك تلقائياً بعد 30 دقيقة من عدم النشاط
+          تم تسجيل خروجك تلقائياً بسبب عدم النشاط
         </div>
       )}
       <Card className="overflow-hidden">
         <div className={cn("h-1.5", st.strip)} />
         <form onSubmit={submit} className="p-6 sm:p-8" noValidate>
-          <div className={cn("mb-6 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold", st.soft, st.text)}>
-            <span className={cn("size-2 rounded-full", st.dot)} />
-            {c.name}
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold", st.soft, st.text)}>
+              <span className={cn("size-2 rounded-full", st.dot)} />
+              {centerName(db, center)}
+            </span>
+            <Link href="/setup" className="text-sm font-semibold text-brand hover:underline">
+              تغيير المركز
+            </Link>
           </div>
           <h1 className="text-2xl font-bold">تسجيل الدخول</h1>
-          <p className="mt-1 text-sm text-muted">ادخل بحسابك الشخصي. كل عملية تُسجّل باسمك.</p>
+          <p className="mt-1 text-sm text-muted">الحسابات تُنشأ من إدارة الموقع</p>
 
           <div className="mt-6 space-y-4">
             <div>
               <Label htmlFor="u">اسم المستخدم</Label>
               <Input
                 id="u"
-                ref={userRef}
                 autoFocus
                 autoComplete="username"
                 autoCapitalize="none"
@@ -92,7 +92,7 @@ function LoginInner() {
                   type={show ? "text" : "password"}
                   autoComplete="current-password"
                   dir="ltr"
-                  className="pe-12 text-start"
+                  className="pl-12 text-start"
                   value={password}
                   invalid={Boolean(error)}
                   onChange={(e) => {
@@ -113,33 +113,38 @@ function LoginInner() {
             </div>
           </div>
 
-          <Button type="submit" size="lg" block className="mt-6" disabled={busy}>
+          <Button type="submit" size="lg" block className="mt-6">
             <LogIn className="size-5" />
-            {busy ? "جارٍ الدخول…" : "دخول"}
+            دخول
           </Button>
         </form>
       </Card>
 
       <div className="mt-5 rounded-2xl border border-dashed border-line p-4">
         <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
-          <Info className="size-4" />
-          حسابات المعاينة (للتصميم فقط) — كلمة المرور 1234
+          <FlaskConical className="size-4" />
+          حسابات تجريبية للعرض — كلمة المرور {DEMO_PASSWORD}
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {USERS.map((u) => (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {demoUsers.map((u) => (
             <button
-              key={u.username}
+              key={u!.id}
               type="button"
               onClick={() => {
-                setUsername(u.username);
-                setPassword(u.password);
+                setUsername(u!.username);
+                setPassword(DEMO_PASSWORD);
                 setError("");
               }}
               className="focus-ring rounded-xl bg-surface px-3 py-2 text-start text-sm shadow-card hover:bg-sunken"
             >
-              <span className="block font-semibold">{u.fullName}</span>
+              <span className="block font-semibold">{u!.fullName}</span>
               <span className="block text-xs text-muted">
-                {u.role === "RECEPTION" ? "استقبال" : `مشروع: ${u.projects.join(" + ")}`}
+                <span className="ltr">{u!.username}</span> ·{" "}
+                {u!.role === "ADMIN"
+                  ? "أدمن"
+                  : u!.role === "RECEPTION"
+                    ? `استقبال ${u!.centers.map((c) => centerName(db, c, true)).join(" و")}`
+                    : `نقطة ${u!.projects.map((p) => projectName(db, p)).join(" + ")} · ${centerName(db, u!.centers[0], true)}`}
               </span>
             </button>
           ))}

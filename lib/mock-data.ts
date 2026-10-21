@@ -1,145 +1,241 @@
-import type { Center, Db, IdentityType, Project, User } from "./types";
-import { todayKey } from "./utils";
+import type { Beneficiary, Center, CenterCode, Db, Entry, Project, Settings, User } from "./types";
+import { addDays, isValidNationalId, todayKey } from "./utils";
 
-/* بيانات تجريبية للتصميم فقط — تُستبدل بـ Supabase لاحقاً */
+/* بيانات تجريبية للعرض والاختبار فقط — تُستبدل بـ Supabase لاحقاً */
+
+export const DB_VERSION = 3;
 
 export const CENTERS: Center[] = [
   { code: "GAZA", name: "مركز غزة", short: "غزة" },
   { code: "KHY", name: "مركز خانيونس", short: "خانيونس" },
 ];
 
-export const PROJECTS: Project[] = [
-  { code: "WFP", name: "WFP", nameAr: "برنامج الأغذية العالمي", allowException: false },
-  { code: "MAP", name: "MAP", nameAr: "ماب", allowException: false },
-  { code: "WHH", name: "WHH", nameAr: "ويلت هنغر هيلفه", allowException: false },
-  { code: "UNICEF", name: "UNICEF", nameAr: "يونيسف", allowException: true },
-  { code: "STC", name: "Save The Children", nameAr: "أنقذوا الأطفال", allowException: false },
-  { code: "CELIAC", name: "السيلياك", nameAr: "Celiac Disease", allowException: true },
-  { code: "MECA", name: "MECA", nameAr: "ميكا", allowException: false },
-  { code: "TAAWON", name: "التعاون", nameAr: "مؤسسة التعاون", allowException: false },
+const BOTH: CenterCode[] = ["GAZA", "KHY"];
+
+export const SEED_PROJECTS: Project[] = [
+  { code: "WFP", name: "WFP", active: true, order: 1, centers: BOTH },
+  { code: "MAP", name: "MAP", active: true, order: 2, centers: BOTH },
+  { code: "WHH", name: "WHH", active: true, order: 3, centers: BOTH },
+  { code: "UNICEF", name: "UNICEF", active: true, order: 4, centers: BOTH },
+  { code: "STC", name: "Save The Children", active: true, order: 5, centers: BOTH },
+  { code: "CELIAC", name: "السيلياك", active: true, order: 6, centers: BOTH },
+  { code: "MECA", name: "MECA", active: true, order: 7, centers: BOTH },
+  { code: "TAAWON", name: "التعاون", active: true, order: 8, centers: BOTH },
 ];
 
-export const IDENTITY_TYPES: IdentityType[] = [
-  { id: "mother", name: "أم", isSystem: true },
-  { id: "father", name: "أب", isSystem: true },
-  { id: "child", name: "طفل", isSystem: true },
-  { id: "grandmother", name: "جدة", isSystem: false },
-];
+export const DEFAULT_SETTINGS: Settings = {
+  hintReception: "أدخل رقم هوية ولي الأمر (الأم أو الأب)، ثم اختر المشاريع التي ستتوجه لها الحالة واضغط إدخال.",
+  hintPoint: "أدخل كل حالة تخدمها، واحدة تلو الأخرى، فور تقديم الخدمة.",
+  idleMinutes: 30,
+  checkDigit: true,
+};
 
-export const EXCEPTION_REASONS = ["حالة طبية طارئة", "تحويل من طبيب المشروع", "خطأ في التحويل من الاستقبال", "أخرى"];
-export const NEW_ENROLLMENT_REASONS = ["تحويل طبي", "طلب من المشروع", "تغيّر حالة المستفيد (حمل / رضاعة)", "أخرى"];
+/** كلمة المرور لكل الحسابات التجريبية */
+export const DEMO_PASSWORD = "1234";
 
-export const USERS: (User & { password: string })[] = [
-  { username: "reception1", password: "1234", fullName: "سماح الأسطل", role: "RECEPTION", centers: ["GAZA", "KHY"], projects: [] },
-  { username: "unicef1", password: "1234", fullName: "محمود قديح", role: "PROJECT", centers: ["GAZA", "KHY"], projects: ["UNICEF"] },
-  { username: "multi1", password: "1234", fullName: "رهف أبو طير", role: "PROJECT", centers: ["GAZA", "KHY"], projects: ["WFP", "CELIAC"] },
-];
+const POINT_NAMES: Record<CenterCode, string[]> = {
+  GAZA: ["أحمد الحلو", "منى السقا", "خالد عياد", "ريم الشوا", "سامي حمدان", "إيمان الغول", "يوسف بكر", "نسرين عاشور"],
+  KHY: ["محمود قديح", "رهف أبو طير", "عبير الفرا", "بلال الأغا", "هدى معمر", "طارق شعت", "دعاء النجار", "وسيم بربخ"],
+};
 
-/** ينتج وقتاً بتوقيت غزة قبل عدد أيام */
-function at(daysAgo: number, hhmm: string): string {
-  const base = new Date(todayKey() + "T" + hhmm + ":00+03:00");
-  base.setUTCDate(base.getUTCDate() - daysAgo);
-  return base.toISOString();
+function seedUsers(): User[] {
+  const created = addDays(todayKey(), -60) + "T08:00:00Z";
+  const users: User[] = [
+    { id: "u-admin", username: "admin", password: DEMO_PASSWORD, fullName: "مدير النظام", role: "ADMIN", centers: BOTH, projects: [], active: true, createdAt: created },
+    { id: "u-rg", username: "reception.gaza", password: DEMO_PASSWORD, fullName: "هناء أبو شعبان", role: "RECEPTION", centers: ["GAZA"], projects: [], active: true, createdAt: created },
+    { id: "u-rk", username: "reception.khy", password: DEMO_PASSWORD, fullName: "سماح الأسطل", role: "RECEPTION", centers: ["KHY"], projects: [], active: true, createdAt: created },
+    { id: "u-rx", username: "reception.both", password: DEMO_PASSWORD, fullName: "ياسر عودة", role: "RECEPTION", centers: BOTH, projects: [], active: false, createdAt: created },
+  ];
+  for (const c of BOTH) {
+    SEED_PROJECTS.forEach((p, i) => {
+      const special = c === "KHY" && p.code === "UNICEF" ? "unicef.khy" : c === "GAZA" && p.code === "WFP" ? "wfp.gaza" : null;
+      if (c === "KHY" && (p.code === "WFP" || p.code === "CELIAC")) return; // يغطيهما حساب متعدد المشاريع
+      users.push({
+        id: `u-${c}-${p.code}`.toLowerCase(),
+        username: special ?? `${p.code.toLowerCase()}.${c === "GAZA" ? "gaza" : "khy"}`,
+        password: DEMO_PASSWORD,
+        fullName: POINT_NAMES[c][i],
+        role: "POINT",
+        centers: [c],
+        projects: [p.code],
+        active: true,
+        createdAt: created,
+      });
+    });
+  }
+  users.push({
+    id: "u-khy-multi",
+    username: "multi.khy",
+    password: DEMO_PASSWORD,
+    fullName: "نادين أبو ريدة",
+    role: "POINT",
+    centers: ["KHY"],
+    projects: ["WFP", "CELIAC"],
+    active: true,
+    createdAt: created,
+  });
+  return users;
 }
 
-export function seedDb(): Db {
-  return {
-    identityTypes: IDENTITY_TYPES,
-    beneficiaries: [
-      { id: "b1", nationalId: "401234562", typeId: "mother", name: "سعاد محمد أحمد النجار", phone: "0599123456", homeCenter: "KHY", householdId: "h1", createdAt: at(120, "09:10") },
-      { id: "b2", nationalId: "402345672", typeId: "child", name: "أحمد محمد أحمد النجار", phone: "0599123456", birthDate: "2023-04-11", homeCenter: "KHY", householdId: "h1", createdAt: at(60, "09:30") },
-      { id: "b3", nationalId: "803456789", typeId: "child", name: "ليان محمد أحمد النجار", phone: "0599123456", birthDate: "2024-12-02", homeCenter: "KHY", householdId: "h1", createdAt: at(45, "10:05") },
-      { id: "b4", nationalId: "404567893", typeId: "mother", name: "مريم عبد الله سالم أبو جزر", phone: "0567788990", homeCenter: "GAZA", createdAt: at(90, "11:00") },
-      { id: "b5", nationalId: "905678124", typeId: "father", name: "خالد يوسف حسن شعبان", phone: "0592233445", homeCenter: "KHY", createdAt: at(200, "08:40") },
-      { id: "b6", nationalId: "406781237", typeId: "mother", name: "هبة سامي محمود الأغا", phone: "0598877665", homeCenter: "KHY", createdAt: at(30, "12:15") },
-      { id: "b7", nationalId: "807892344", typeId: "mother", name: "نور حسن علي أبو شمالة", phone: "0569911223", homeCenter: "KHY", createdAt: at(15, "10:00") },
-      { id: "b8", nationalId: "408913457", typeId: "child", name: "ياسر رامي خليل الفرا", phone: "0594455667", birthDate: "2022-07-19", homeCenter: "KHY", createdAt: at(150, "09:45") },
-      { id: "b9", nationalId: "909124562", typeId: "mother", name: "رنا إبراهيم عطية الفرا", phone: "0594455667", homeCenter: "KHY", createdAt: at(70, "10:30") },
-    ],
-    enrollments: [
-      { id: "e1", beneficiaryId: "b1", project: "WFP", center: "KHY", status: "ACTIVE", enrolledAt: at(120, "09:10") },
-      { id: "e2", beneficiaryId: "b1", project: "UNICEF", center: "KHY", status: "ACTIVE", enrolledAt: at(120, "09:10") },
-      { id: "e3", beneficiaryId: "b1", project: "MAP", center: "KHY", status: "PENDING_APPROVAL", enrolledAt: at(6, "10:00") },
-      { id: "e4", beneficiaryId: "b1", project: "WHH", center: "GAZA", status: "CLOSED", enrolledAt: at(300, "09:00"), closedAt: at(49, "12:00"), closedReason: "إتمام البرنامج" },
-      { id: "e5", beneficiaryId: "b2", project: "UNICEF", center: "KHY", status: "ACTIVE", enrolledAt: at(60, "09:30") },
-      { id: "e6", beneficiaryId: "b2", project: "WFP", center: "KHY", status: "ACTIVE", enrolledAt: at(60, "09:30") },
-      { id: "e7", beneficiaryId: "b3", project: "UNICEF", center: "KHY", status: "ACTIVE", enrolledAt: at(45, "10:05") },
-      { id: "e8", beneficiaryId: "b3", project: "STC", center: "KHY", status: "ACTIVE", enrolledAt: at(45, "10:05") },
-      { id: "e9", beneficiaryId: "b4", project: "WFP", center: "GAZA", status: "ACTIVE", enrolledAt: at(90, "11:00") },
-      { id: "e10", beneficiaryId: "b4", project: "UNICEF", center: "GAZA", status: "ACTIVE", enrolledAt: at(90, "11:00") },
-      { id: "e11", beneficiaryId: "b5", project: "WFP", center: "KHY", status: "ACTIVE", enrolledAt: at(200, "08:40") },
-      { id: "e12", beneficiaryId: "b6", project: "CELIAC", center: "KHY", status: "ACTIVE", enrolledAt: at(30, "12:15") },
-      { id: "e13", beneficiaryId: "b7", project: "UNICEF", center: "KHY", status: "PENDING_APPROVAL", enrolledAt: at(0, "09:05") },
-      { id: "e14", beneficiaryId: "b7", project: "WFP", center: "KHY", status: "ACTIVE", enrolledAt: at(15, "10:00") },
-      { id: "e15", beneficiaryId: "b8", project: "UNICEF", center: "KHY", status: "CLOSED", enrolledAt: at(150, "09:45"), closedAt: at(20, "11:00"), closedReason: "تعافٍ" },
-      { id: "e16", beneficiaryId: "b9", project: "UNICEF", center: "KHY", status: "ACTIVE", enrolledAt: at(70, "10:30") },
-      { id: "e17", beneficiaryId: "b9", project: "WFP", center: "KHY", status: "ACTIVE", enrolledAt: at(70, "10:30") },
-    ],
-    visits: [
-      // سعاد
-      { id: "v1", beneficiaryId: "b1", seq: 1, kind: "NEW", center: "GAZA", occurredAt: at(120, "09:10"), referrals: ["WHH"], receptionist: "استقبال غزة 1" },
-      { id: "v2", beneficiaryId: "b1", seq: 2, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(90, "09:40"), referrals: ["WFP", "UNICEF"], receptionist: "سماح الأسطل" },
-      { id: "v3", beneficiaryId: "b1", seq: 3, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(63, "10:15"), referrals: ["WFP"], receptionist: "سماح الأسطل" },
-      { id: "v4", beneficiaryId: "b1", seq: 4, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(42, "11:20"), referrals: ["WFP", "UNICEF"], receptionist: "سماح الأسطل" },
-      { id: "v5", beneficiaryId: "b1", seq: 5, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(21, "09:05"), referrals: ["WFP", "UNICEF"], receptionist: "سماح الأسطل" },
-      { id: "v6", beneficiaryId: "b1", seq: 6, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(6, "10:00"), referrals: ["WFP", "MAP"], receptionist: "سماح الأسطل" },
-      { id: "v7", beneficiaryId: "b1", seq: 7, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(0, "09:15"), referrals: ["WFP"], receptionist: "سماح الأسطل" },
-      // أحمد (لا زيارة اليوم)
-      { id: "v8", beneficiaryId: "b2", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(60, "09:30"), referrals: ["UNICEF", "WFP"], receptionist: "سماح الأسطل" },
-      { id: "v9", beneficiaryId: "b2", seq: 2, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(14, "10:10"), referrals: ["UNICEF"], receptionist: "سماح الأسطل" },
-      // ليان: زيارة اليوم لـ STC فقط
-      { id: "v10", beneficiaryId: "b3", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(45, "10:05"), referrals: ["UNICEF", "STC"], receptionist: "سماح الأسطل" },
-      { id: "v11", beneficiaryId: "b3", seq: 2, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(0, "10:02"), referrals: ["STC"], receptionist: "سماح الأسطل" },
-      // مريم (غزة)
-      { id: "v12", beneficiaryId: "b4", seq: 1, kind: "NEW", center: "GAZA", occurredAt: at(90, "11:00"), referrals: ["WFP", "UNICEF"], receptionist: "استقبال غزة 1" },
-      { id: "v13", beneficiaryId: "b4", seq: 2, kind: "FOLLOW_UP", center: "GAZA", occurredAt: at(12, "09:20"), referrals: ["WFP"], receptionist: "استقبال غزة 1" },
-      // خالد
-      { id: "v14", beneficiaryId: "b5", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(200, "08:40"), referrals: ["WFP"], receptionist: "سماح الأسطل" },
-      // هبة: اليوم للسيلياك
-      { id: "v15", beneficiaryId: "b6", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(30, "12:15"), referrals: ["CELIAC"], receptionist: "سماح الأسطل" },
-      { id: "v16", beneficiaryId: "b6", seq: 2, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(0, "09:50"), referrals: ["CELIAC"], receptionist: "سماح الأسطل" },
-      // نور: اليوم UNICEF (بانتظار الاعتماد) + WFP
-      { id: "v17", beneficiaryId: "b7", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(15, "10:00"), referrals: ["WFP"], receptionist: "سماح الأسطل" },
-      { id: "v18", beneficiaryId: "b7", seq: 2, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(0, "09:05"), referrals: ["WFP", "UNICEF"], receptionist: "سماح الأسطل" },
-      // ياسر
-      { id: "v19", beneficiaryId: "b8", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(150, "09:45"), referrals: ["UNICEF"], receptionist: "سماح الأسطل" },
-      // رنا: اليوم UNICEF + WFP
-      { id: "v21", beneficiaryId: "b9", seq: 1, kind: "NEW", center: "KHY", occurredAt: at(70, "10:30"), referrals: ["UNICEF", "WFP"], receptionist: "سماح الأسطل" },
-      { id: "v22", beneficiaryId: "b9", seq: 2, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(35, "09:30"), referrals: ["UNICEF"], receptionist: "سماح الأسطل" },
-      { id: "v23", beneficiaryId: "b9", seq: 3, kind: "FOLLOW_UP", center: "KHY", occurredAt: at(0, "10:20"), referrals: ["UNICEF", "WFP"], receptionist: "سماح الأسطل" },
-    ],
-    services: [
-      { id: "s1", beneficiaryId: "b1", project: "WFP", center: "KHY", servedAt: at(6, "10:30"), servedBy: "رهف أبو طير", source: "POINT" },
-      { id: "s2", beneficiaryId: "b1", project: "UNICEF", center: "KHY", servedAt: at(21, "09:40"), servedBy: "محمود قديح", source: "POINT" },
-      { id: "s3", beneficiaryId: "b1", project: "WFP", center: "KHY", servedAt: at(0, "09:35"), servedBy: "رهف أبو طير", source: "POINT" },
-      { id: "s4", beneficiaryId: "b2", project: "UNICEF", center: "KHY", servedAt: at(14, "10:30"), servedBy: "محمود قديح", source: "POINT" },
-      { id: "s5", beneficiaryId: "b9", project: "UNICEF", center: "KHY", servedAt: at(35, "09:50"), servedBy: "محمود قديح", source: "EXCEL" },
-      { id: "s6", beneficiaryId: "b6", project: "CELIAC", center: "KHY", servedAt: at(30, "12:40"), servedBy: "رهف أبو طير", source: "POINT" },
-    ],
-    restrictions: [
-      { beneficiaryId: "b5", level: "TEMPORARILY_BLOCKED", reason: "تكرار الاستلام من مشروعين خلال نفس الأسبوع — قيد المراجعة الإدارية", endsAt: at(-9, "23:59") },
-      { beneficiaryId: "b6", level: "WARNING", reason: "خُدمت سابقاً دون المرور على الاستقبال" },
-    ],
+/* ===== مولد بيانات ثابت (نفس النتيجة في كل مرة) ===== */
+
+function rng(seed: number) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-/** أرقام تجريبية لتبدو العدادات واقعية */
-export const COUNTER_BASELINE = {
-  reception: { visits: 84, newCases: 11, referrals: 126, served: 98 },
-  point: { served: 33, exceptions: 1 },
-};
+function validId(r: () => number): string {
+  const base = String(Math.floor(r() * 90_000_000) + 400_000_000).slice(0, 8);
+  for (let c = 0; c < 10; c++) if (isValidNationalId(base + c)) return base + c;
+  return validId(r);
+}
 
-/** هويات جاهزة لمعاينة السيناريوهات */
-export const DEMO_IDS: { id: string; label: string }[] = [
-  { id: "401234562", label: "سعاد — زيارة اليوم + خدمات" },
-  { id: "402345672", label: "أحمد (طفل) — متابعة عادية" },
-  { id: "803456789", label: "ليان — محوّلة لمشروع آخر اليوم" },
-  { id: "404567893", label: "مريم — مسجلة في مركز غزة" },
-  { id: "905678124", label: "خالد — منع مؤقت" },
-  { id: "406781237", label: "هبة — تحذير" },
-  { id: "807892344", label: "نور — مشروع بانتظار الاعتماد" },
-  { id: "408913457", label: "ياسر — ارتباط مغلق" },
-  { id: "909124562", label: "رنا — محوّلة اليوم" },
-  { id: "401029384", label: "هوية غير مسجلة" },
-  { id: "123456789", label: "هوية غير صالحة" },
-];
+const FIRST = ["سعاد", "مريم", "هبة", "نور", "رنا", "أسماء", "فاطمة", "آمنة", "دعاء", "ولاء", "محمد", "أحمد", "خالد", "يوسف", "إبراهيم", "سمر", "إيمان", "رغد", "حنان", "عبير"];
+const MIDDLE = ["محمد", "أحمد", "سالم", "حسن", "علي", "خليل", "عبد الله", "سامي", "رامي", "يوسف"];
+const LAST = ["النجار", "أبو جزر", "الفرا", "الأغا", "شعبان", "أبو شمالة", "الأسطل", "قديح", "معمر", "بربخ", "السقا", "الحلو", "الشوا", "حمدان", "عياد"];
+
+function randomName(r: () => number): string {
+  const roll = r();
+  if (roll < 0.3) return ""; // الاسم اختياري
+  const f = FIRST[Math.floor(r() * FIRST.length)];
+  const l = LAST[Math.floor(r() * LAST.length)];
+  if (roll < 0.45) return f;
+  if (roll < 0.8) return `${f} ${l}`;
+  return `${f} ${MIDDLE[Math.floor(r() * MIDDLE.length)]} ${l}`;
+}
+
+/** فرق توقيت غزة عن UTC ليوم محدد، مثل +03:00 */
+function gazaOffset(key: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Gaza", timeZoneName: "shortOffset" }).formatToParts(
+      new Date(key + "T09:00:00Z"),
+    );
+    const tz = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+3";
+    const h = Number(tz.replace("GMT", "") || "3");
+    return `${h >= 0 ? "+" : "-"}${String(Math.abs(h)).padStart(2, "0")}:00`;
+  } catch {
+    return "+03:00";
+  }
+}
+
+export function atTime(key: string, minutes: number): string {
+  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const mm = String(minutes % 60).padStart(2, "0");
+  return new Date(`${key}T${hh}:${mm}:00${gazaOffset(key)}`).toISOString();
+}
+
+const WEIGHTS: Record<string, number> = { WFP: 0.55, UNICEF: 0.45, MAP: 0.2, STC: 0.12, TAAWON: 0.09, CELIAC: 0.07, WHH: 0.06, MECA: 0.05 };
+
+export function seedDb(): Db {
+  const r = rng(20261021);
+  const users = seedUsers();
+  const beneficiaries: Record<string, Beneficiary> = {};
+  const entries: Entry[] = [];
+  const known: Record<CenterCode, string[]> = { GAZA: [], KHY: [] };
+  const today = todayKey();
+  let n = 0;
+  const seen = new Set<string>(); // منع تكرار نفس الهوية في نفس اليوم
+
+  // اليوم: الإدخالات حتى الوقت الحالي فقط
+  const nowParts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Gaza", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()).split(":");
+  const nowMin = Number(nowParts[0]) * 60 + Number(nowParts[1]);
+  const todaySpan = Math.max(30, Math.min(330, nowMin - 8 * 60));
+  const cap = (date: string, m: number) => (date === today ? Math.min(m, 8 * 60 + todaySpan) : Math.min(m, 15 * 60));
+
+  const pointUser = (c: CenterCode, p: string) =>
+    c === "KHY" && (p === "WFP" || p === "CELIAC") ? "u-khy-multi" : `u-${c}-${p}`.toLowerCase();
+
+  const touch = (nid: string, at: string): boolean => {
+    if (beneficiaries[nid]) return false;
+    beneficiaries[nid] = { nid, name: randomName(r), createdAt: at };
+    return true;
+  };
+
+  for (let d = 35; d >= 0; d--) {
+    const date = addDays(today, -d);
+    if (new Date(date + "T12:00:00Z").getUTCDay() === 5) continue; // الجمعة عطلة
+    for (const c of ["GAZA", "KHY"] as CenterCode[]) {
+      let count = Math.round((c === "GAZA" ? 55 : 62) + r() * 30);
+      if (d === 0) count = Math.max(6, Math.round((count * todaySpan) / 330));
+      const receptionUser = c === "GAZA" ? "u-rg" : "u-rk";
+      for (let i = 0; i < count; i++) {
+        const returning = known[c].length > 40 && r() < 0.72;
+        const nid = returning ? known[c][Math.floor(r() * known[c].length)] : validId(r);
+        if (seen.has(`R|${date}|${c}|${nid}`)) continue;
+        seen.add(`R|${date}|${c}|${nid}`);
+        const minute = 8 * 60 + Math.floor(r() * (d === 0 ? todaySpan : 330));
+        const at = atTime(date, minute);
+        const isNew = touch(nid, at);
+        if (isNew) known[c].push(nid);
+        const projects = SEED_PROJECTS.filter((p) => r() < WEIGHTS[p.code]).map((p) => p.code);
+        if (!projects.length) projects.push(r() < 0.6 ? "WFP" : "UNICEF");
+        entries.push({ id: `e${++n}`, nid, center: c, userId: receptionUser, kind: "RECEPTION", at, date, projects, isNew });
+
+        for (const p of projects) {
+          if (r() < 0.9 && !seen.has(`P|${date}|${nid}|${p}`)) {
+            seen.add(`P|${date}|${nid}|${p}`);
+            const pAt = atTime(date, cap(date, minute + 10 + Math.floor(r() * 50)));
+            entries.push({ id: `e${++n}`, nid, center: c, userId: pointUser(c, p), kind: "POINT", at: pAt, date, projects: [p], isNew: false });
+          }
+        }
+        // طفل يُخدم في النقطة بهويته الخاصة
+        if (r() < 0.12) {
+          const child = validId(r);
+          const p = r() < 0.6 ? "UNICEF" : "STC";
+          const cAt = atTime(date, cap(date, minute + 20 + Math.floor(r() * 40)));
+          const childNew = touch(child, cAt);
+          entries.push({ id: `e${++n}`, nid: child, center: c, userId: pointUser(c, p), kind: "POINT", at: cAt, date, projects: [p], isNew: childNew });
+        }
+      }
+    }
+  }
+
+  // حالة عرض ثابتة بسجل واضح
+  const demo = "401234562";
+  beneficiaries[demo] = { nid: demo, name: "سعاد محمد النجار", createdAt: atTime(addDays(today, -34), 9 * 60 + 10) };
+  const demoVisits: [number, number, string[]][] = [
+    [34, 9 * 60 + 10, ["WFP", "UNICEF"]],
+    [27, 10 * 60 + 5, ["WFP"]],
+    [20, 9 * 60 + 40, ["WFP", "UNICEF"]],
+    [13, 11 * 60 + 20, ["WFP", "MAP"]],
+    [6, 9 * 60 + 5, ["WFP", "UNICEF"]],
+    [1, 10 * 60, ["WFP"]],
+  ];
+  demoVisits.forEach(([ago, m, projects], i) => {
+    const date = addDays(today, -ago);
+    if (new Date(date + "T12:00:00Z").getUTCDay() === 5) return;
+    entries.push({ id: `e${++n}`, nid: demo, center: "KHY", userId: "u-rk", kind: "RECEPTION", at: atTime(date, m), date, projects, isNew: i === 0 });
+    projects.forEach((p) =>
+      entries.push({ id: `e${++n}`, nid: demo, center: "KHY", userId: pointUser("KHY", p), kind: "POINT", at: atTime(date, m + 25), date, projects: [p], isNew: false }),
+    );
+  });
+
+  entries.sort((a, b) => a.at.localeCompare(b.at));
+
+  return {
+    version: DB_VERSION,
+    seededOn: today,
+    centers: CENTERS,
+    projects: SEED_PROJECTS,
+    users,
+    beneficiaries,
+    entries,
+    changes: [],
+    settings: DEFAULT_SETTINGS,
+  };
+}
+
+/** هوية صالحة غير مسجلة لاختبار "حالة جديدة" */
+export function freshValidId(db: Db): string {
+  const r = rng(Date.now() % 100000);
+  for (let i = 0; i < 50; i++) {
+    const id = validId(r);
+    if (!db.beneficiaries[id]) return id;
+  }
+  return "401029384";
+}

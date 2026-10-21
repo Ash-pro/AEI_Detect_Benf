@@ -3,36 +3,28 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TimerReset } from "lucide-react";
-import { useSession } from "@/lib/session";
-import { AppHeader } from "./app-header";
+import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 
-const IDLE_MINUTES = 30;
 const WARN_SECONDS = 60;
 
-/** يحمي الشاشات التشغيلية: مركز الجهاز ← الدخول ← المشروع، مع الخروج التلقائي بعد الخمول */
-export function AppGate({
-  children,
-  role,
-  enabled = true,
-}: {
-  children: React.ReactNode;
-  role?: "PROJECT" | "RECEPTION";
-  /** false = الشاشة مخفية بمفتاح ميزة، ويُعاد التوجيه للتحقق */
-  enabled?: boolean;
-}) {
-  const { ready, center, user, project, logout } = useSession();
+/** يحمي الشاشات: المركز ← الدخول ← نوع الحساب، مع الخروج التلقائي بعد الخمول */
+export function AppGate({ children, area }: { children: React.ReactNode; area: "staff" | "admin" }) {
+  const { ready, center, user, logout, db } = useStore();
   const router = useRouter();
   const last = useRef(Date.now());
   const [warn, setWarn] = useState<number | null>(null);
+  const idle = db.settings.idleMinutes || 30;
+
+  const wrongArea = user && ((area === "admin") !== (user.role === "ADMIN"));
 
   useEffect(() => {
     if (!ready) return;
-    if (!center) router.replace("/setup");
+    if (!user && !center) router.replace("/setup");
     else if (!user) router.replace("/login");
-    else if (user.role === "PROJECT" && !project) router.replace("/select-project");
-    else if ((role && user.role !== role) || !enabled) router.replace("/verify");
-  }, [ready, center, user, project, router, role, enabled]);
+    else if (wrongArea) router.replace(user.role === "ADMIN" ? "/admin" : "/entry");
+    else if (user.role !== "ADMIN" && !center) router.replace("/setup");
+  }, [ready, center, user, wrongArea, router]);
 
   useEffect(() => {
     if (!user) return;
@@ -43,7 +35,7 @@ export function AppGate({
     const events = ["pointerdown", "keydown", "touchstart"] as const;
     events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
     const t = window.setInterval(() => {
-      const left = IDLE_MINUTES * 60 - Math.floor((Date.now() - last.current) / 1000);
+      const left = idle * 60 - Math.floor((Date.now() - last.current) / 1000);
       if (left <= 0) {
         logout();
         router.replace("/login?idle=1");
@@ -53,15 +45,12 @@ export function AppGate({
       events.forEach((e) => window.removeEventListener(e, bump));
       window.clearInterval(t);
     };
-  }, [user, logout, router]);
+  }, [user, logout, router, idle]);
 
-  if (!ready || !center || !user || (user.role === "PROJECT" && !project) || (role && user.role !== role) || !enabled) {
-    return <div className="min-h-dvh" />;
-  }
+  if (!ready || !user || wrongArea || (user.role !== "ADMIN" && !center)) return <div className="min-h-dvh" />;
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader />
+    <>
       {children}
       {warn !== null && (
         <div className="fixed inset-x-0 bottom-4 z-50 mx-auto flex w-[min(92vw,460px)] animate-fade-up items-center gap-3 rounded-2xl border border-warn/30 bg-surface p-4 shadow-pop">
@@ -74,6 +63,6 @@ export function AppGate({
           </Button>
         </div>
       )}
-    </div>
+    </>
   );
 }
