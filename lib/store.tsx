@@ -30,6 +30,7 @@ interface Ctx {
   renameBeneficiary: (nid: string, name: string) => void;
   updateEntryProjects: (entryId: string, projects: string[]) => string | null;
   deleteEntry: (entryId: string) => void;
+  correctRouting: (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => string | null;
   moveEntry: (entryId: string, newNid: string) => string | null;
 
   saveUser: (u: User) => string | null;
@@ -224,6 +225,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [log],
   );
 
+  /** موظف النقطة يصحح توجيه الاستقبال لليوم، ويحذف إدخال خدمته الخاطئ إن وُجد */
+  const correctRouting = useCallback(
+    (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => {
+      if (!projects.length) return "اختر المشروع الصحيح";
+      const e = db.entries.find((x) => x.id === receptionEntryId && x.kind === "RECEPTION");
+      if (!e) return "لا يوجد توجيه استقبال لهذه الحالة اليوم";
+      const from = e.corrected?.from ?? e.projects;
+      setDb((d) =>
+        log(
+          {
+            ...d,
+            entries: d.entries
+              .filter((x) => !deleteEntryIds.includes(x.id))
+              .map((x) =>
+                x.id === receptionEntryId ? { ...x, projects, corrected: { by: user?.id ?? "", at: new Date().toISOString(), from } } : x,
+              ),
+          },
+          "تصحيح توجيه",
+          `${e.nid}: ${e.projects.join("، ")} ← ${projects.join("، ")}${deleteEntryIds.length ? " (مع حذف إدخال الخدمة الخاطئ)" : ""}`,
+        ),
+      );
+      return null;
+    },
+    [db, user, log],
+  );
+
   const moveEntry = useCallback(
     (entryId: string, newNid: string) => {
       const e = db.entries.find((x) => x.id === entryId);
@@ -318,10 +345,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       ready, online, db, center, user, setCenter, login, logout,
-      addEntry, renameBeneficiary, updateEntryProjects, deleteEntry, moveEntry,
+      addEntry, renameBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry,
       saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo,
     }),
-    [ready, online, db, center, user, setCenter, login, logout, addEntry, renameBeneficiary, updateEntryProjects, deleteEntry, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo],
+    [ready, online, db, center, user, setCenter, login, logout, addEntry, renameBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

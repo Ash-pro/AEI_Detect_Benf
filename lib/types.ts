@@ -44,6 +44,8 @@ export interface Entry {
   date: string; // YYYY-MM-DD بتوقيت غزة
   projects: string[];
   isNew: boolean;
+  /** تصحيح توجيه الاستقبال من نقطة مشروع */
+  corrected?: { by: string; at: string; from: string[] };
 }
 
 export interface ChangeLog {

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, FlaskConical, Info, Sparkles } from "lucide-react";
+import { CircleAlert, FlaskConical, Info, Sparkles } from "lucide-react";
 import { AppGate } from "@/components/shell/app-gate";
 import { StaffHeader } from "@/components/shell/app-header";
 import { IdInput } from "@/components/entry/id-input";
 import { BeneficiaryCard } from "@/components/entry/beneficiary-card";
 import { EditDialog } from "@/components/entry/edit-dialog";
 import { ShareDialog } from "@/components/entry/share-dialog";
+import { RoutingDialog, RoutingPanel } from "@/components/entry/routing";
 import { StatsStrip } from "@/components/entry/stats-strip";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import {
   activeProjects,
-  centerName,
   lastReception,
   projectName,
   staffShareText,
@@ -44,10 +44,13 @@ function EntryScreen() {
   const [formError, setFormError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [routingOpen, setRoutingOpen] = useState(false);
 
   const today = todayKey();
-  // كل مشاريع المركز تظهر للجميع، حتى يصحح موظف النقطة أي توجيه خاطئ
-  const projects = useMemo(() => activeProjects(db, c), [db, c]);
+  // كل مشاريع المركز (للاستقبال ولتعديل التوجيه من النقطة)
+  const allHere = useMemo(() => activeProjects(db, c), [db, c]);
+  // مربعات الخدمة عند النقطة: مشاريع الموظف فقط
+  const projects = useMemo(() => (isPoint ? allHere.filter((p) => u.projects.includes(p.code)) : allHere), [allHere, isPoint, u.projects]);
 
   const beneficiary = nid ? db.beneficiaries[nid] : undefined;
   const history = useMemo(() => (nid ? visibleHistory(db, nid, u) : []), [db, nid, u]);
@@ -61,6 +64,7 @@ function EntryScreen() {
     return m;
   }, [db, nid, today]);
   const todayHere = receptionToday.find((e) => e.center === c);
+  const routing = todayHere ?? receptionToday[0];
   const todayMine = useMemo(
     () => (nid ? db.entries.filter((e) => e.nid === nid && e.date === today && e.userId === u.id) : []),
     [db, nid, today, u.id],
@@ -76,7 +80,10 @@ function EntryScreen() {
         const done = new Set(
           db.entries.filter((e) => e.nid === id && e.date === today && e.kind === "POINT").flatMap((e) => e.projects),
         );
-        const own = available.filter((p) => u.projects.includes(p) && !done.has(p));
+        const own = available.filter((p) => !done.has(p));
+        // محوّلة لمشروع آخر: لا شيء محدد مسبقاً حتى لا تُدخل خدمة بالخطأ
+        const rt = db.entries.filter((e) => e.nid === id && e.date === today && e.kind === "RECEPTION");
+        if (rt.length && !rt.some((e) => e.projects.some((p) => u.projects.includes(p)))) return [];
         const mineLast = [...db.entries].reverse().find((e) => e.userId === u.id && own.includes(e.projects[0]));
         return own.length ? [mineLast?.projects[0] ?? own[0]] : [];
       }
@@ -137,19 +144,8 @@ function EntryScreen() {
         أُدخلت اليوم الساعة <span className="num">{formatTime(todayHere.at)}</span>. الضغط على "إدخال" يحدّث مشاريع نفس الإدخال ولا يُحسب حالة جديدة.
       </StatusLine>
     );
-  } else if (nid && isPoint) {
-    const rt = receptionToday[0];
-    status = rt ? (
-      <StatusLine tone="ok" icon={<CheckCircle2 className="size-5" />}>
-        مرّت على الاستقبال اليوم <span className="num">{formatTime(rt.at)}</span>
-        {rt.center !== c && ` في ${centerName(db, rt.center)}`} — محوّلة إلى: {rt.projects.map((p) => projectName(db, p)).join("، ")}
-      </StatusLine>
-    ) : (
-      <StatusLine tone="muted" icon={<Info className="size-5" />}>
-        لم تمر على الاستقبال اليوم. معلومة فقط، ويمكنك الإدخال.
-      </StatusLine>
-    );
   }
+  const myPointToday = todayMine.filter((e) => e.kind === "POINT");
 
   const allDone = isPoint && u.projects.length > 0 && u.projects.every((p) => pointDoneToday.has(p));
 
@@ -180,12 +176,12 @@ function EntryScreen() {
             </>
           )}
 
+          {isPoint && <RoutingPanel reception={routing} user={u} center={c} onFix={() => setRoutingOpen(true)} />}
+
           <fieldset>
             <legend className="mb-2.5 text-sm font-bold">
-              {isPoint ? "المشروع الذي خُدمت فيه الحالة" : "التحويل إلى"}
-              <span className="ms-2 font-normal text-muted">
-                {isPoint ? "مشروعك محدد، ويمكنك اختيار غيره لتصحيح توجيه خاطئ" : "يمكن اختيار أكثر من مشروع"}
-              </span>
+              {isPoint ? "إدخال الخدمة في" : "التحويل إلى"}
+              {!isPoint && <span className="ms-2 font-normal text-muted">يمكن اختيار أكثر من مشروع</span>}
             </legend>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {projects.map((p) => {
@@ -195,7 +191,7 @@ function EntryScreen() {
                     key={p.code}
                     checked={selected.includes(p.code)}
                     disabled={Boolean(doneAt)}
-                    sub={doneAt ? `أُدخلت اليوم ${formatTime(doneAt)}` : isPoint && u.projects.includes(p.code) ? "مشروعك" : undefined}
+                    sub={doneAt ? `أُدخلت اليوم ${formatTime(doneAt)}` : undefined}
                     onChange={(v) => {
                       setFormError("");
                       setSelected((s) => (v ? [...s, p.code] : s.filter((x) => x !== p.code)));
@@ -222,7 +218,7 @@ function EntryScreen() {
               إلغاء
             </Button>
             <Button size="xl" className="w-full sm:flex-1" disabled={!selected.length} onClick={submit}>
-              {!isPoint && todayHere ? "تحديث إدخال اليوم" : "إدخال"}
+              {!isPoint && todayHere ? "تحديث إدخال اليوم" : isPoint ? "إدخال الخدمة" : "إدخال"}
             </Button>
           </div>
         </Card>
@@ -241,6 +237,23 @@ function EntryScreen() {
             setEditOpen(false);
             setRaw(id);
             open(id);
+          }}
+        />
+      )}
+
+      {isPoint && (
+        <RoutingDialog
+          open={routingOpen}
+          onClose={() => setRoutingOpen(false)}
+          reception={routing}
+          projects={allHere}
+          myEntries={myPointToday}
+          onDone={(list) => {
+            setRoutingOpen(false);
+            const n = list.map((p) => projectName(db, p)).join("، ");
+            toast(`تم تعديل التوجيه إلى ${n} — وجّه المستفيد إلى نقطة ${n}`);
+            // بعد التصحيح: لا خدمة محددة إلا إذا بقيت الحالة محوّلة لمشروعي
+            setSelected(list.some((p) => u.projects.includes(p)) ? projects.map((p) => p.code).filter((p) => list.includes(p) && !pointDoneToday.has(p)) : []);
           }}
         />
       )}

@@ -78,6 +78,11 @@ export function BeneficiaryCard({
             <span className="text-muted">
               · {centerName(db, last.center)} · {userName(db, last.userId)}
             </span>
+            {last.corrected && (
+              <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
+                عُدّل التوجيه من {last.corrected.from.map((p) => projectName(db, p)).join("، ")} بواسطة {userName(db, last.corrected.by)}
+              </span>
+            )}
           </div>
         </div>
       )}
