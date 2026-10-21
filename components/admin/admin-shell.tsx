@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Search, Settings, Users } from "lucide-react";
+import { Download, CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Search, Settings, Users } from "lucide-react";
 import { BrandMark } from "@/components/shell/brand-mark";
+import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </Link>
             ))}
           </nav>
+          {!isStandalone() && (
+            <div className="px-3 pb-2">
+              <button
+                onClick={requestInstall}
+                className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-semibold text-muted hover:bg-sunken hover:text-ink"
+              >
+                <Download className="size-5" />
+                تثبيت التطبيق
+              </button>
+            </div>
+          )}
           <div className="border-t border-line p-3">
             <div className="flex items-center gap-3 rounded-xl px-2 py-2">
               <span className="grid size-9 place-items-center rounded-full bg-sunken font-bold text-muted">{user?.fullName.trim()[0]}</span>

@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, FlaskConical, LogIn, TimerOff } from "lucide-react";
+import { Download, Eye, EyeOff, FlaskConical, LogIn, TimerOff } from "lucide-react";
+import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { AuthLayout } from "@/components/shell/auth-layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,16 @@ function LoginInner() {
             <LogIn className="size-5" />
             دخول
           </Button>
+          {!isStandalone() && (
+            <button
+              type="button"
+              onClick={requestInstall}
+              className="focus-ring mx-auto mt-4 flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-brand hover:bg-brand-soft"
+            >
+              <Download className="size-4" />
+              تثبيت التطبيق على هذا الجهاز
+            </button>
+          )}
         </form>
       </Card>
 

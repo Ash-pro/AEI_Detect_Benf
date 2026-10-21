@@ -5,7 +5,7 @@ import { Download, EllipsisVertical, Share, SquarePlus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { storageGet, storageSet } from "@/lib/utils";
+import { cn, storageGet, storageSet } from "@/lib/utils";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -13,6 +13,18 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const HIDE_KEY = "aei.pwa.hiddenUntil";
+const INSTALL_EVENT = "aei:install";
+
+/** يُستدعى من أي زر "تثبيت التطبيق" في القوائم */
+export function requestInstall() {
+  window.dispatchEvent(new Event(INSTALL_EVENT));
+}
+
+/** هل التطبيق مثبت ويعمل كتطبيق مستقل؟ */
+export function isStandalone() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
 
 /** تسجيل Service Worker + زر جانبي لتثبيت التطبيق على الجوال */
 export function PwaInstall() {
@@ -27,9 +39,7 @@ export function PwaInstall() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    setInstalled(standalone);
+    setInstalled(isStandalone());
     setIsIos(/iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
     setHidden(storageGet<number>(HIDE_KEY, 0) > Date.now());
 
@@ -48,6 +58,13 @@ export function PwaInstall() {
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
+
+  // زر التثبيت من القوائم
+  useEffect(() => {
+    const onRequest = () => void install();
+    window.addEventListener(INSTALL_EVENT, onRequest);
+    return () => window.removeEventListener(INSTALL_EVENT, onRequest);
+  });
 
   async function install() {
     if (deferred) {
@@ -71,7 +88,7 @@ export function PwaInstall() {
     <>
       {!hidden && (
         <div
-          className="fixed start-0 z-40 flex animate-fade-in flex-col items-start gap-1 lg:hidden"
+          className={cn("fixed start-0 z-40 flex animate-fade-in flex-col items-start gap-1", !deferred && "lg:hidden")}
           style={{ bottom: "calc(112px + env(safe-area-inset-bottom, 0px))" }}
         >
           <button
@@ -118,7 +135,7 @@ export function PwaInstall() {
         ) : (
           <ol className="space-y-4">
             <Step n={1} icon={<EllipsisVertical className="size-5" />}>
-              افتح قائمة المتصفح <b>⋮</b> في أعلى الشاشة
+              افتح قائمة المتصفح <b>⋮</b> في أعلى الشاشة. على الكمبيوتر يمكنك الضغط على أيقونة التثبيت في شريط العنوان مباشرة
             </Step>
             <Step n={2} icon={<Download className="size-5" />}>
               اختر <b>تثبيت التطبيق</b> أو <b>إضافة إلى الشاشة الرئيسية</b>

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, Download, LogOut, Wifi, WifiOff } from "lucide-react";
+import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
 import { centerName, projectName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,18 @@ export function StaffHeader() {
                 {user.fullName}
                 <div className="ltr text-start">{user.username}</div>
               </div>
+              {!isStandalone() && (
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    requestInstall();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold hover:bg-sunken"
+                >
+                  <Download className="size-4 text-muted" />
+                  تثبيت التطبيق
+                </button>
+              )}
               <button
                 onClick={() => {
                   logout();
