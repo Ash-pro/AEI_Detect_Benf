@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { KeyRound, MoreVertical, Pencil, Plus, Power, Search, Trash2, UserRound } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Search, UserRound } from "lucide-react";
+import { RowMenu } from "@/components/admin/row-menu";
 import { PageHead, Segmented } from "@/components/admin/bits";
 import {
   DeleteUserDialog,
@@ -258,6 +259,8 @@ export default function UsersPage() {
                         onDelete={() => setDeleting(u)}
                         active={u.active}
                         manage={can(u)}
+                        title={u.fullName}
+                        sub={u.username}
                       />
                     </td>
                   </tr>
@@ -302,6 +305,8 @@ export default function UsersPage() {
                   onDelete={() => setDeleting(u)}
                   active={u.active}
                   manage={can(u)}
+                  title={u.fullName}
+                  sub={u.username}
                 />
               </div>
             </li>
@@ -321,77 +326,5 @@ export default function UsersPage() {
       <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />
       <UserDetailDialog user={viewing} onClose={() => setViewing(null)} onEdit={viewing && can(viewing) ? openEdit : undefined} />
     </>
-  );
-}
-
-function RowMenu({
-  onView,
-  onEdit,
-  onReset,
-  onToggle,
-  onDelete,
-  active,
-  manage = true,
-}: {
-  onView: () => void;
-  onEdit: () => void;
-  onReset: () => void;
-  onToggle: () => void;
-  onDelete: () => void;
-  active: boolean;
-  manage?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-  const item = "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm font-semibold hover:bg-sunken";
-  const run = (fn: () => void) => () => {
-    setOpen(false);
-    fn();
-  };
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-label="خيارات"
-        className="focus-ring grid size-8 place-items-center rounded-lg text-muted hover:bg-sunken"
-      >
-        <MoreVertical className="size-4" />
-      </button>
-      {open && (
-        <div className="absolute end-0 top-full z-30 mt-1 w-56 animate-fade-up rounded-xl border border-line bg-surface p-1.5 shadow-pop">
-          <button className={item} onClick={run(onView)}>
-            <UserRound className="size-4 text-muted" />
-            عرض التفاصيل
-          </button>
-          {manage && (
-            <>
-          <button className={item} onClick={run(onEdit)}>
-            <Pencil className="size-4 text-muted" />
-            تعديل
-          </button>
-          <button className={item} onClick={run(onReset)}>
-            <KeyRound className="size-4 text-muted" />
-            إعادة تعيين كلمة المرور
-          </button>
-          <button className={item} onClick={run(onToggle)}>
-            <Power className="size-4 text-muted" />
-            {active ? "إيقاف الحساب" : "تفعيل الحساب"}
-          </button>
-          <button className={cn(item, "text-bad hover:bg-bad-soft")} onClick={run(onDelete)}>
-            <Trash2 className="size-4" />
-            حذف
-          </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
