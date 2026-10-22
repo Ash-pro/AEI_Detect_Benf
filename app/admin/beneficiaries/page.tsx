@@ -2,13 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { Pencil, Search, UserRound } from "lucide-react";
+import { BeneficiaryEditor } from "@/components/entry/edit-dialog";
+import { IdTypeTag } from "@/components/entry/id-fields";
 import { PageHead } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/field";
-import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { entriesOf } from "@/lib/queries";
 import type { Entry } from "@/lib/types";
@@ -16,11 +15,9 @@ import { formatDate, normalizeArabicName, normalizeDigits } from "@/lib/utils";
 
 /** الشاشة 10 — المستفيدون والإدخالات */
 export default function BeneficiariesPage() {
-  const { db, renameBeneficiary } = useStore();
-  const toast = useToast();
+  const { db } = useStore();
   const [q, setQ] = useState("");
   const [nid, setNid] = useState<string | null>(null);
-  const [name, setName] = useState("");
   const [edit, setEdit] = useState<Entry | null>(null);
 
   const total = Object.keys(db.beneficiaries).length;
@@ -58,14 +55,14 @@ export default function BeneficiariesPage() {
             {results.map((r) => (
               <li key={r.nid}>
                 <button
-                  onClick={() => {
-                    setNid(r.nid);
-                    setName(r.name);
-                  }}
+                  onClick={() => setNid(r.nid)}
                   className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-start hover:bg-sunken/60 ${nid === r.nid ? "bg-brand-soft" : ""}`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold">{r.name || <span className="text-muted">بدون اسم</span>}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold">{r.name || <span className="text-muted">بدون اسم</span>}</span>
+                      <IdTypeTag type={r.type} />
+                    </span>
                     <span className="num text-xs text-muted">{r.nid}</span>
                   </span>
                   <span className="num shrink-0 text-xs text-muted">{entriesOf(db, r.nid).length} إدخال</span>
@@ -79,23 +76,9 @@ export default function BeneficiariesPage() {
 
         {b ? (
           <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-end gap-3 border-b border-line p-5">
-              <div className="min-w-[220px] flex-1">
-                <Label htmlFor="b-name">الاسم</Label>
-                <Input id="b-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="بدون اسم" />
-              </div>
-              <Button
-                variant="secondary"
-                size="lg"
-                disabled={name.trim() === b.name}
-                onClick={() => {
-                  renameBeneficiary(b.nid, name);
-                  toast("تم حفظ الاسم");
-                }}
-              >
-                حفظ الاسم
-              </Button>
-              <div className="w-full text-sm text-muted">
+            <div className="space-y-3 border-b border-line p-5">
+              <BeneficiaryEditor key={b.nid} beneficiary={b} />
+              <div className="text-sm text-muted">
                 <span className="num font-bold text-ink">{b.nid}</span> · مسجلة منذ <span className="num">{formatDate(b.createdAt)}</span> ·{" "}
                 <span className="num">{history.length}</span> إدخال
               </div>

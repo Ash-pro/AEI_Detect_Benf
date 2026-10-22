@@ -4,10 +4,11 @@ import { Share2 } from "lucide-react";
 import type { StaffStats } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export function StatsStrip({ stats, isPoint, onShare }: { stats: StaffStats; isPoint: boolean; onShare: () => void }) {
+export function StatsStrip({ stats, isPoint, waiting, onShare }: { stats: StaffStats; isPoint: boolean; waiting?: number; onShare: () => void }) {
   const tiles = isPoint
     ? [
         { label: "حالات خدمتها اليوم", value: stats.total, cls: "text-ok" },
+        { label: "بانتظار الخدمة", value: waiting ?? 0, cls: waiting ? "text-warn" : "text-muted" },
         { label: "جديدة على النظام", value: stats.isNew, cls: "text-info" },
       ]
     : [

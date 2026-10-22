@@ -4,10 +4,11 @@ import { useState } from "react";
 import { CalendarClock, History, Pencil, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { HistoryRow, KindTag } from "./history";
+import { HistoryRow, KindTag, ProjectChip } from "./history";
+import { IdTypeTag } from "./id-fields";
 import type { Beneficiary, Db, Entry } from "@/lib/types";
 import { centerName, projectName, userName } from "@/lib/queries";
-import { dayLabel, formatDate, formatTime, sinceText } from "@/lib/utils";
+import { dayFull, formatDate, formatTime, sinceText, todayKey, weekday } from "@/lib/utils";
 
 /** بطاقة الهوية: البيانات + آخر زيارة + سجل الزيارات + زر التعديل */
 export function BeneficiaryCard({
@@ -24,7 +25,10 @@ export function BeneficiaryCard({
   onEdit: () => void;
 }) {
   const [all, setAll] = useState(false);
-  const last = history[0];
+  // آخر زيارة: آخر زيارة قبل اليوم، وإلا إدخال اليوم
+  const today = todayKey();
+  const last = history.find((e) => e.date !== today) ?? history[0];
+  const rest = history.filter((e) => e !== last);
   const visits = new Set(history.filter((e) => e.kind === "RECEPTION").map((e) => e.date + e.center)).size;
 
   return (
@@ -34,7 +38,10 @@ export function BeneficiaryCard({
           <UserRound className="size-6" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="num text-xl font-bold leading-snug tracking-wider sm:text-2xl">{beneficiary.name || beneficiary.nid}</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-bold leading-snug sm:text-2xl">
+            <span className={beneficiary.name ? "" : "num tracking-wider"}>{beneficiary.name || beneficiary.nid}</span>
+            <IdTypeTag type={beneficiary.type} className="text-sm" />
+          </h2>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted">
             {beneficiary.name && <span className="num font-semibold tracking-wider text-ink">{beneficiary.nid}</span>}
             <span>
@@ -62,18 +69,17 @@ export function BeneficiaryCard({
             <CalendarClock className="size-4" />
             آخر زيارة
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="font-bold">
-              {dayLabel(last.date)} <span className="num">{formatTime(last.at)}</span>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-xl font-bold text-ink">{sinceText(last.at)}</span>
+            <span className="font-semibold">
+              {weekday(last.date)} <span className="num">{dayFull(last.date)}</span>
+              <span className="num text-muted"> · {formatTime(last.at)}</span>
             </span>
-            <span className="text-sm text-muted">({sinceText(last.at)})</span>
             <KindTag kind={last.kind} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm">
             {last.projects.map((p) => (
-              <span key={p} className="rounded-md bg-surface px-2 py-0.5 text-xs font-bold shadow-sm">
-                {projectName(db, p)}
-              </span>
+              <ProjectChip key={p} db={db} code={p} number={last.queue?.[p]} tone="surface" />
             ))}
             <span className="text-muted">
               · {centerName(db, last.center)} · {userName(db, last.userId)}
@@ -87,14 +93,14 @@ export function BeneficiaryCard({
         </div>
       )}
 
-      {history.length > 1 && (
+      {rest.length > 0 && (
         <div className="border-t border-line">
           <div className="flex items-center gap-2 px-5 pb-1 pt-3 text-xs font-semibold text-muted">
             <History className="size-4" />
-            سجل الزيارات السابقة
+            سجل الزيارات
           </div>
           <ul className="divide-y divide-line/60">
-            {history.slice(1, 6).map((e) => (
+            {rest.slice(0, 5).map((e) => (
               <HistoryRow key={e.id} e={e} db={db} />
             ))}
           </ul>

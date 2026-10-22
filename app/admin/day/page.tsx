@@ -6,10 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { ArrowRight, Pencil, Search } from "lucide-react";
 import { CenterTabs, ExportButton, PageHead, Segmented, StatCard } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
-import { KindTag } from "@/components/entry/history";
+import { KindTag, ProjectChip } from "@/components/entry/history";
+import { IdTypeTag } from "@/components/entry/id-fields";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
-import { type CenterFilter, centerName, dayStats, filterCenter, projectName, userName } from "@/lib/queries";
+import { type CenterFilter, centerName, dayStats, filterCenter, userName } from "@/lib/queries";
 import type { Entry } from "@/lib/types";
 import { dayFull, formatTime, normalizeDigits, todayKey, weekday } from "@/lib/utils";
 
@@ -111,8 +112,8 @@ function DayInner() {
                 <th className="px-4 py-2.5 text-start font-semibold">الوقت</th>
                 <th className="px-3 py-2.5 text-start font-semibold">الهوية</th>
                 <th className="px-3 py-2.5 text-start font-semibold">الاسم</th>
-                <th className="px-3 py-2.5 text-start font-semibold">النوع</th>
-                <th className="px-3 py-2.5 text-start font-semibold">المشاريع</th>
+                <th className="px-3 py-2.5 text-start font-semibold">الإدخال</th>
+                <th className="px-3 py-2.5 text-start font-semibold">المشاريع · الدور</th>
                 <th className="px-3 py-2.5 text-start font-semibold">المركز</th>
                 <th className="px-3 py-2.5 text-start font-semibold">الموظف</th>
                 {canEdit && <th className="w-12" />}
@@ -125,12 +126,19 @@ function DayInner() {
                   <td className="num px-3 py-2">{e.nid}</td>
                   <td className="px-3 py-2">
                     {db.beneficiaries[e.nid]?.name || <span className="text-muted">—</span>}
+                    <IdTypeTag type={db.beneficiaries[e.nid]?.type} className="ms-1.5" />
                     {e.isNew && <span className="ms-2 rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
                   </td>
                   <td className="px-3 py-2">
                     <KindTag kind={e.kind} />
                   </td>
-                  <td className="px-3 py-2">{e.projects.map((p) => projectName(db, p)).join("، ")}</td>
+                  <td className="px-3 py-2">
+                    <span className="flex flex-wrap gap-1">
+                      {e.projects.map((p) => (
+                        <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
+                      ))}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-muted">{centerName(db, e.center, true)}</td>
                   <td className="px-3 py-2 text-muted">{userName(db, e.userId)}</td>
                   {canEdit && <td className="px-2 py-1">

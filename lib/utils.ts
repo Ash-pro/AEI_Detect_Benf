@@ -86,14 +86,36 @@ export function daysBetween(iso: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-/** "منذ 7 أيام" مع قواعد العدد العربية */
+/** "منذ 7 أيام" / "منذ شهر" مع قواعد العدد العربية */
 export function sinceText(iso: string): string {
   const n = daysBetween(iso);
   if (n <= 0) return "اليوم";
   if (n === 1) return "أمس";
   if (n === 2) return "منذ يومين";
   if (n <= 10) return `منذ ${n} أيام`;
-  return `منذ ${n} يوماً`;
+  if (n < 30) return `منذ ${n} يوماً`;
+  if (n < 365) {
+    const m = Math.floor(n / 30);
+    if (m === 1) return "منذ شهر";
+    if (m === 2) return "منذ شهرين";
+    return `منذ ${m} أشهر`;
+  }
+  const y = Math.floor(n / 365);
+  if (y === 1) return "منذ سنة";
+  if (y === 2) return "منذ سنتين";
+  return y <= 10 ? `منذ ${y} سنوات` : `منذ ${y} سنة`;
+}
+
+/** "منذ 18 دقيقة" لمدة الانتظار */
+export function minutesText(n: number): string {
+  if (n < 1) return "أقل من دقيقة";
+  if (n === 1) return "دقيقة";
+  if (n === 2) return "دقيقتان";
+  if (n <= 10) return `${n} دقائق`;
+  if (n < 60) return `${n} دقيقة`;
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  return `${h === 1 ? "ساعة" : h === 2 ? "ساعتان" : `${h} ساعات`}${m ? ` و${m} د` : ""}`;
 }
 
 export function countText(n: number, one: string, two: string, few: string, many: string): string {

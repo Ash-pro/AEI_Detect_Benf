@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeftRight, Info, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,9 @@ import { CheckBox } from "@/components/ui/check";
 import { FieldError, FieldHint, Input, Label } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { KindTag } from "./history";
+import { IdFields } from "./id-fields";
 import { useStore } from "@/lib/store";
-import type { Beneficiary, Entry, Project } from "@/lib/types";
+import type { Beneficiary, Entry, IdType, Project } from "@/lib/types";
 import { formatTime, normalizeDigits } from "@/lib/utils";
 
 /** تعديل بيانات الهوية وإدخالات اليوم للموظف نفسه */
@@ -31,6 +32,8 @@ export function EditDialog({
   return (
     <Dialog open={open} onClose={onClose} title="تعديل" description={beneficiary.nid} size="lg">
       <div className="space-y-6">
+        <BeneficiaryEditor beneficiary={beneficiary} open={open} />
+
         <section>
           <h3 className="mb-2 text-sm font-bold">إدخالاتك اليوم لهذه الهوية</h3>
           {todayMine.length === 0 ? (
@@ -50,6 +53,43 @@ export function EditDialog({
         </p>
       </div>
     </Dialog>
+  );
+}
+
+/** تعديل الاسم ونوع الهوية — متاح للموظف في أي وقت */
+export function BeneficiaryEditor({ beneficiary, open = true }: { beneficiary: Beneficiary; open?: boolean }) {
+  const { updateBeneficiary } = useStore();
+  const toast = useToast();
+  const [name, setName] = useState(beneficiary.name);
+  const [type, setType] = useState<IdType | undefined>(beneficiary.type);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setName(beneficiary.name);
+    setType(beneficiary.type);
+    setErr("");
+  }, [open, beneficiary.nid, beneficiary.name, beneficiary.type]);
+
+  const changed = name.trim() !== beneficiary.name || type !== beneficiary.type;
+
+  function save() {
+    const e = updateBeneficiary(beneficiary.nid, { name, type });
+    if (e) return setErr(e);
+    toast("تم حفظ بيانات الهوية");
+  }
+
+  return (
+    <section className="rounded-2xl border border-line p-4">
+      <h3 className="mb-3 text-sm font-bold">بيانات الهوية</h3>
+      <IdFields idPrefix={`ed-${beneficiary.nid}`} name={name} type={type} onName={(v) => { setName(v); setErr(""); }} onType={setType} onEnter={() => changed && save()} />
+      <div className="mt-3 flex items-center gap-3">
+        <Button size="sm" disabled={!changed} onClick={save}>
+          حفظ البيانات
+        </Button>
+        <FieldError>{err}</FieldError>
+      </div>
+    </section>
   );
 }
 

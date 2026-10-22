@@ -78,6 +78,7 @@ export default function AdminHome() {
                   <th className="px-5 py-2.5 text-start font-semibold">المشروع</th>
                   <th className="px-3 py-2.5 text-start font-semibold">موجّه من الاستقبال</th>
                   <th className="px-3 py-2.5 text-start font-semibold">مخدوم في النقطة</th>
+                  <th className="px-3 py-2.5 text-start font-semibold">بانتظار</th>
                   <th className="w-8" />
                 </tr>
               </thead>
@@ -107,6 +108,14 @@ export default function AdminHome() {
                         <div className="hidden flex-1 sm:block"><Bar value={r.served} max={max} tone="ok" /></div>
                       </div>
                     </td>
+                    <td className="px-3 py-3">
+                      <span className={`num font-bold ${r.waiting ? "text-warn" : "text-muted"}`}>{r.waiting}</span>
+                      {r.lastQueue > 0 && center !== "ALL" && (
+                        <div className="text-[11px] text-muted">
+                          آخر دور <span className="num">{r.lastQueue}</span>
+                        </div>
+                      )}
+                    </td>
                     <td className="pe-4">
                       <Link href={`/admin/day?d=${date}&c=${center}&p=${r.code}`} aria-label={`تفاصيل ${r.name}`}>
                         <ChevronLeft className="size-4 text-muted group-hover:text-brand" />
@@ -119,7 +128,7 @@ export default function AdminHome() {
           </div>
           <p className="flex gap-2 border-t border-line px-5 py-3 text-xs text-muted">
             <Info className="size-4 shrink-0" />
-            الرقمان منفصلان: الاستقبال يسجّل هوية ولي الأمر، والنقطة تسجّل هوية من خدمته (قد يكون الطفل).
+            الاستقبال يسجّل هوية ولي الأمر ويعطيه رقم دور في كل مشروع، والنقطة تسجّل هوية من خدمته (قد يكون الطفل). "بانتظار" = محوّلة اليوم ولم تُخدم بعد.
           </p>
         </Card>
 

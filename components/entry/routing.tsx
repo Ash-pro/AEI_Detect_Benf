@@ -52,8 +52,17 @@ export function RoutingPanel({
       <div className="flex gap-3 px-4 py-3.5">
         {ok ? <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-ok" /> : <TriangleAlert className="mt-0.5 size-6 shrink-0 text-warn" />}
         <div className="min-w-0 flex-1">
-          <div className={cn("text-lg font-bold leading-snug", ok ? "text-ok" : "text-warn")}>
-            {ok ? `محوّلة إلى مشروعك: ${names(db, forMe)}` : `محوّلة إلى ${names(db, others)} — ليست لمشروعك`}
+          <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 text-lg font-bold leading-snug", ok ? "text-ok" : "text-warn")}>
+            <span>{ok ? `محوّلة إلى مشروعك: ${names(db, forMe)}` : `محوّلة إلى ${names(db, others)} — ليست لمشروعك`}</span>
+            {ok &&
+              forMe.map((p) =>
+                reception.queue?.[p] ? (
+                  <span key={p} className="inline-flex items-center gap-1.5 rounded-lg bg-surface px-2.5 py-0.5 text-base text-ink shadow-sm">
+                    {forMe.length > 1 && <span className="text-sm text-muted">{projectName(db, p)}</span>}
+                    الدور <span className="num text-xl text-ok">{reception.queue[p]}</span>
+                  </span>
+                ) : null,
+              )}
           </div>
           <div className="mt-1 text-sm text-ink/80">
             الاستقبال <span className="num">{formatTime(reception.at)}</span> · {userName(db, reception.userId)}

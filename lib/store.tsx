@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Beneficiary, CenterCode, Db, Entry, Project, SessionUser, Settings, User } from "./types";
+import type { Beneficiary, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
+import { assignQueue } from "./queue";
 import { DB_VERSION, seedDb } from "./mock-data";
 import { dateKey, storageGet, storageSet, todayKey, uuid } from "./utils";
 import { isStaff } from "./roles";
@@ -13,7 +14,7 @@ const CENTER_KEY = "aei.v2.center";
 const USER_KEY = "aei.v2.user";
 
 export type AddEntryResult =
-  | { ok: true; mode: "created" | "updated"; entry: Entry; isNew: boolean; skipped: string[] }
+  | { ok: true; mode: "created" | "updated"; entry: Entry; isNew: boolean; skipped: string[]; added: string[] }
   | { ok: false; error: string };
 
 interface Ctx {
@@ -26,8 +27,9 @@ interface Ctx {
   login: (username: string, password: string) => { user?: SessionUser; error?: string };
   logout: () => void;
 
-  addEntry: (input: { nid: string; projects: string[] }) => AddEntryResult;
+  addEntry: (input: AddEntryInput) => AddEntryResult;
   renameBeneficiary: (nid: string, name: string) => void;
+  updateBeneficiary: (nid: string, data: { name: string; type?: IdType }) => string | null;
   updateEntryProjects: (entryId: string, projects: string[]) => string | null;
   deleteEntry: (entryId: string) => void;
   correctRouting: (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => string | null;
@@ -42,6 +44,16 @@ interface Ctx {
   resetDemo: () => void;
 }
 
+export interface AddEntryInput {
+  nid: string;
+  projects: string[];
+  /** للحالة الجديدة: الاسم ونوع الهوية مطلوبان */
+  name?: string;
+  type?: IdType;
+  /** النقطة: إدخال الاستقبال الذي يُخدم دوره */
+  queueRef?: string;
+}
+
 const StoreContext = createContext<Ctx | null>(null);
 
 const EMPTY: Db = {
@@ -52,6 +64,7 @@ const EMPTY: Db = {
   users: [],
   beneficiaries: {},
   entries: [],
+  counters: {},
   changes: [],
   settings: { hintReception: "", hintPoint: "", idleMinutes: 30 },
 };
@@ -86,12 +99,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setOnline(navigator.onLine);
     const on = () => setOnline(true);
     const off = () => setOnline(false);
+    // مزامنة بين تبويبات المتصفح: الاستقبال في تبويب والنقطة في آخر
+    const sync = (e: StorageEvent) => {
+      if (e.key !== DB_KEY || !e.newValue) return;
+      try {
+        const next = JSON.parse(e.newValue) as Db;
+        if (next.version === DB_VERSION) setDb(next);
+      } catch {
+        /* تجاهل */
+      }
+    };
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
+    window.addEventListener("storage", sync);
     setReady(true);
     return () => {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
+      window.removeEventListener("storage", sync);
     };
   }, []);
 
@@ -139,23 +164,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   /* ===== الإدخال ===== */
 
   const addEntry = useCallback(
-    (input: { nid: string; projects: string[] }): AddEntryResult => {
+    (input: AddEntryInput): AddEntryResult => {
       if (!user || !center) return { ok: false, error: "انتهت الجلسة، سجّل الدخول من جديد" };
-      if (!input.projects.length) return { ok: false, error: "اختر مشروعاً واحداً على الأقل" };
       const today = todayKey();
       const now = new Date().toISOString();
-      const kind = user.role === "POINT" ? "POINT" : "RECEPTION";
+      const kind: Entry["kind"] = user.role === "POINT" ? "POINT" : "RECEPTION";
       const isNew = !db.beneficiaries[input.nid];
-      const beneficiary: Beneficiary = db.beneficiaries[input.nid] ?? { nid: input.nid, name: "", createdAt: now };
+      if (isNew) {
+        if (!input.name?.trim()) return { ok: false, error: "اكتب اسم المستفيد — الاسم الأول يكفي" };
+        if (!input.type) return { ok: false, error: "اختر نوع الهوية: أب أو أم أو طفل" };
+      }
+      if (!input.projects.length) return { ok: false, error: "اختر مشروعاً واحداً على الأقل" };
+      const beneficiary: Beneficiary = db.beneficiaries[input.nid] ?? {
+        nid: input.nid,
+        name: input.name!.trim().replace(/\s+/g, " "),
+        type: input.type,
+        createdAt: now,
+      };
 
       if (kind === "RECEPTION") {
         const existing = db.entries.find(
           (e) => e.kind === "RECEPTION" && e.nid === input.nid && e.date === today && e.center === center,
         );
         if (existing) {
-          const updated = { ...existing, projects: input.projects };
-          setDb((d) => log({ ...d, entries: d.entries.map((e) => (e.id === existing.id ? updated : e)) }, "تحديث إدخال اليوم", `${input.nid}: ${input.projects.join("، ")}`));
-          return { ok: true, mode: "updated", entry: updated, isNew: false, skipped: [] };
+          const q = assignQueue(db.counters, existing, input.projects);
+          const updated = { ...existing, projects: input.projects, queue: q.queue };
+          setDb((d) =>
+            log(
+              { ...d, counters: { ...d.counters, ...q.counters }, entries: d.entries.map((e) => (e.id === existing.id ? updated : e)) },
+              "تحديث إدخال اليوم",
+              `${input.nid}: ${input.projects.join("، ")}`,
+            ),
+          );
+          return { ok: true, mode: "updated", entry: updated, isNew: false, skipped: [], added: q.added };
         }
       }
 
@@ -170,19 +211,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (!projects.length) return { ok: false, error: "هذه الحالة أُدخلت اليوم في هذا المشروع مسبقاً" };
       }
 
-      const created: Entry[] =
-        kind === "POINT"
-          ? projects.map((p, i) => ({ id: uuid(), nid: input.nid, center, userId: user.id, kind, at: now, date: today, projects: [p], isNew: isNew && i === 0 }))
-          : [{ id: uuid(), nid: input.nid, center, userId: user.id, kind, at: now, date: today, projects, isNew }];
+      let counters = db.counters;
+      let created: Entry[];
+      if (kind === "POINT") {
+        created = projects.map((p, i) => ({
+          id: uuid(), nid: input.nid, center, userId: user.id, kind, at: now, date: today, projects: [p], isNew: isNew && i === 0,
+          ...(input.queueRef ? { queueRef: input.queueRef } : {}),
+        }));
+      } else {
+        const base: Entry = { id: uuid(), nid: input.nid, center, userId: user.id, kind, at: now, date: today, projects, isNew };
+        const q = assignQueue(counters, base, projects);
+        counters = q.counters;
+        created = [{ ...base, queue: q.queue }];
+      }
 
       setDb((d) => ({
         ...d,
+        counters: { ...d.counters, ...counters },
         beneficiaries: isNew ? { ...d.beneficiaries, [input.nid]: beneficiary } : d.beneficiaries,
         entries: [...d.entries, ...created],
       }));
-      return { ok: true, mode: "created", entry: created[0], isNew, skipped };
+      return { ok: true, mode: "created", entry: created[0], isNew, skipped, added: kind === "RECEPTION" ? projects : [] };
     },
     [db, user, center, log],
+  );
+
+  const updateBeneficiary = useCallback(
+    (nid: string, data: { name: string; type?: IdType }) => {
+      const name = data.name.trim().replace(/\s+/g, " ");
+      if (!name) return "اكتب الاسم — الاسم الأول يكفي";
+      setDb((d) => {
+        const b = d.beneficiaries[nid];
+        if (!b) return d;
+        return log(
+          { ...d, beneficiaries: { ...d.beneficiaries, [nid]: { ...b, name, type: data.type ?? b.type } } },
+          "تعديل بيانات هوية",
+          `${nid}: "${b.name || "—"}" ← "${name}"${data.type && data.type !== b.type ? " (تغيير النوع)" : ""}`,
+        );
+      });
+      return null;
+    },
+    [log],
   );
 
   const renameBeneficiary = useCallback(
@@ -205,7 +274,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const clash = db.entries.some((x) => x.id !== e.id && x.kind === "POINT" && x.nid === e.nid && x.date === e.date && x.projects.some((p) => projects.includes(p)));
         if (clash) return "هذا المشروع مُدخل لنفس الحالة في نفس اليوم";
       }
-      setDb((d) => log({ ...d, entries: d.entries.map((x) => (x.id === entryId ? { ...x, projects } : x)) }, "تعديل مشاريع إدخال", `${e.nid} (${e.date}): ${e.projects.join("، ")} ← ${projects.join("، ")}`));
+      const q = e.kind === "RECEPTION" ? assignQueue(db.counters, e, projects) : null;
+      setDb((d) =>
+        log(
+          {
+            ...d,
+            counters: q ? { ...d.counters, ...q.counters } : d.counters,
+            entries: d.entries.map((x) => (x.id === entryId ? { ...x, projects, ...(q ? { queue: q.queue } : {}) } : x)),
+          },
+          "تعديل مشاريع إدخال",
+          `${e.nid} (${e.date}): ${e.projects.join("، ")} ← ${projects.join("، ")}`,
+        ),
+      );
       return null;
     },
     [db, log],
@@ -232,14 +312,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const e = db.entries.find((x) => x.id === receptionEntryId && x.kind === "RECEPTION");
       if (!e) return "لا يوجد توجيه استقبال لهذه الحالة اليوم";
       const from = e.corrected?.from ?? e.projects;
+      // المشروع الجديد يعطي الرقم التالي، ورقم المشروع القديم يُلغى ولا يُعاد استخدامه
+      const q = assignQueue(db.counters, e, projects);
+      const queueOut = { ...e.queueOut };
+      e.projects.filter((p) => !projects.includes(p) && e.queue?.[p]).forEach((p) => (queueOut[p] = e.queue![p]));
+      projects.forEach((p) => delete queueOut[p]);
       setDb((d) =>
         log(
           {
             ...d,
+            counters: { ...d.counters, ...q.counters },
             entries: d.entries
               .filter((x) => !deleteEntryIds.includes(x.id))
               .map((x) =>
-                x.id === receptionEntryId ? { ...x, projects, corrected: { by: user?.id ?? "", at: new Date().toISOString(), from } } : x,
+                x.id === receptionEntryId
+                  ? { ...x, projects, queue: q.queue, queueOut, corrected: { by: user?.id ?? "", at: new Date().toISOString(), from } }
+                  : x,
               ),
           },
           "تصحيح توجيه",
@@ -345,10 +433,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       ready, online, db, center, user, setCenter, login, logout,
-      addEntry, renameBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry,
+      addEntry, renameBeneficiary, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry,
       saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo,
     }),
-    [ready, online, db, center, user, setCenter, login, logout, addEntry, renameBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo],
+    [ready, online, db, center, user, setCenter, login, logout, addEntry, renameBeneficiary, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

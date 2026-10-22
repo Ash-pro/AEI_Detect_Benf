@@ -28,9 +28,13 @@ export interface User {
   createdAt: string;
 }
 
+/** نوع الهوية المدخلة */
+export type IdType = "FATHER" | "MOTHER" | "CHILD";
+
 export interface Beneficiary {
   nid: string;
   name: string;
+  type?: IdType;
   createdAt: string;
 }
 
@@ -46,6 +50,12 @@ export interface Entry {
   isNew: boolean;
   /** تصحيح توجيه الاستقبال من نقطة مشروع */
   corrected?: { by: string; at: string; from: string[] };
+  /** أرقام الدور لإدخال الاستقبال: مشروع ← رقم */
+  queue?: Record<string, number>;
+  /** أرقام دور أُلغيت بعد تحويل الحالة لمشروع آخر: مشروع ← رقم */
+  queueOut?: Record<string, number>;
+  /** إدخال النقطة: إدخال الاستقبال الذي خُدم دوره (قد تكون هوية الطفل مختلفة عن ولي الأمر) */
+  queueRef?: string;
 }
 
 export interface ChangeLog {
@@ -71,6 +81,8 @@ export interface Db {
   users: User[];
   beneficiaries: Record<string, Beneficiary>;
   entries: Entry[];
+  /** آخر رقم دور: "اليوم|المركز|المشروع" ← رقم */
+  counters: Record<string, number>;
   changes: ChangeLog[];
   settings: Settings;
 }

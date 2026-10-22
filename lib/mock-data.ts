@@ -1,9 +1,10 @@
-import type { Beneficiary, Center, CenterCode, Db, Entry, Project, Settings, User } from "./types";
+import type { Beneficiary, Center, CenterCode, Db, Entry, IdType, Project, Settings, User } from "./types";
+import { assignQueue } from "./queue";
 import { addDays, isValidNationalId, todayKey } from "./utils";
 
 /* بيانات تجريبية للعرض والاختبار فقط — تُستبدل بـ Supabase لاحقاً */
 
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export const CENTERS: Center[] = [
   { code: "GAZA", name: "مركز غزة", short: "غزة" },
@@ -24,7 +25,7 @@ export const SEED_PROJECTS: Project[] = [
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
-  hintReception: "أدخل رقم هوية ولي الأمر (الأم أو الأب)، ثم اختر المشاريع التي ستتوجه لها الحالة واضغط إدخال.",
+  hintReception: "أدخل رقم هوية ولي الأمر. للحالة الجديدة اكتب الاسم (الأول يكفي) واختر النوع، ثم اختر المشاريع واضغط إدخال وبلّغ المستفيد برقم دوره.",
   hintPoint: "أدخل كل حالة تخدمها، واحدة تلو الأخرى، فور تقديم الخدمة. إذا كان توجيه الاستقبال خاطئاً، اضغط \"تعديل التوجيه\" ولا تُدخل الخدمة.",
   idleMinutes: 30,
 };
@@ -95,19 +96,24 @@ function validId(r: () => number): string {
   return validId(r);
 }
 
-const FIRST = ["سعاد", "مريم", "هبة", "نور", "رنا", "أسماء", "فاطمة", "آمنة", "دعاء", "ولاء", "محمد", "أحمد", "خالد", "يوسف", "إبراهيم", "سمر", "إيمان", "رغد", "حنان", "عبير"];
 const MIDDLE = ["محمد", "أحمد", "سالم", "حسن", "علي", "خليل", "عبد الله", "سامي", "رامي", "يوسف"];
 const LAST = ["النجار", "أبو جزر", "الفرا", "الأغا", "شعبان", "أبو شمالة", "الأسطل", "قديح", "معمر", "بربخ", "السقا", "الحلو", "الشوا", "حمدان", "عياد"];
 
-function randomName(r: () => number): string {
+const FIRST_M = ["محمد", "أحمد", "خالد", "يوسف", "إبراهيم", "سامي", "رامي", "حسن", "علي", "عمر"];
+const FIRST_F = ["سعاد", "مريم", "هبة", "نور", "رنا", "أسماء", "فاطمة", "آمنة", "دعاء", "ولاء", "سمر", "إيمان", "رغد", "حنان", "عبير"];
+const FIRST_C = ["آدم", "جنى", "ليان", "كريم", "سلمى", "مالك", "تالا", "زين", "ريتال", "حمزة"];
+
+/** الاسم: الأول فقط أو الأول والثاني — بدون شرط ثلاثي */
+function randomName(r: () => number, type: IdType): string {
+  const list = type === "FATHER" ? FIRST_M : type === "CHILD" ? FIRST_C : FIRST_F;
+  const f = list[Math.floor(r() * list.length)];
   const roll = r();
-  if (roll < 0.3) return ""; // الاسم اختياري
-  const f = FIRST[Math.floor(r() * FIRST.length)];
-  const l = LAST[Math.floor(r() * LAST.length)];
-  if (roll < 0.45) return f;
-  if (roll < 0.8) return `${f} ${l}`;
-  return `${f} ${MIDDLE[Math.floor(r() * MIDDLE.length)]} ${l}`;
+  if (roll < 0.35) return f;
+  if (roll < 0.75) return `${f} ${MIDDLE[Math.floor(r() * MIDDLE.length)]}`;
+  return `${f} ${LAST[Math.floor(r() * LAST.length)]}`;
 }
+
+const pickType = (r: () => number): IdType => (r() < 0.8 ? "MOTHER" : "FATHER");
 
 /** فرق توقيت غزة عن UTC ليوم محدد، مثل +03:00 */
 function gazaOffset(key: string): string {
@@ -150,9 +156,9 @@ export function seedDb(): Db {
   const pointUser = (c: CenterCode, p: string) =>
     c === "KHY" && (p === "WFP" || p === "CELIAC") ? "u-khy-multi" : `u-${c}-${p}`.toLowerCase();
 
-  const touch = (nid: string, at: string): boolean => {
+  const touch = (nid: string, at: string, type: IdType): boolean => {
     if (beneficiaries[nid]) return false;
-    beneficiaries[nid] = { nid, name: randomName(r), createdAt: at };
+    beneficiaries[nid] = { nid, name: randomName(r, type), type, createdAt: at };
     return true;
   };
 
@@ -170,17 +176,21 @@ export function seedDb(): Db {
         seen.add(`R|${date}|${c}|${nid}`);
         const minute = 8 * 60 + Math.floor(r() * (d === 0 ? todaySpan : 330));
         const at = atTime(date, minute);
-        const isNew = touch(nid, at);
+        const isNew = touch(nid, at, pickType(r));
         if (isNew) known[c].push(nid);
         const projects = SEED_PROJECTS.filter((p) => r() < WEIGHTS[p.code]).map((p) => p.code);
         if (!projects.length) projects.push(r() < 0.6 ? "WFP" : "UNICEF");
-        entries.push({ id: `e${++n}`, nid, center: c, userId: receptionUser, kind: "RECEPTION", at, date, projects, isNew });
+        const recId = `e${++n}`;
+        entries.push({ id: recId, nid, center: c, userId: receptionUser, kind: "RECEPTION", at, date, projects, isNew });
 
         for (const p of projects) {
-          if (r() < 0.9 && !seen.has(`P|${date}|${nid}|${p}`)) {
+          const pMin = minute + 10 + Math.floor(r() * 50);
+          // اليوم: آخر الحالات ما زالت بانتظار الخدمة
+          if (d === 0 && (pMin > nowMin || minute > 8 * 60 + todaySpan * 0.8)) continue;
+          if (r() < 0.93 && !seen.has(`P|${date}|${nid}|${p}`)) {
             seen.add(`P|${date}|${nid}|${p}`);
-            const pAt = atTime(date, cap(date, minute + 10 + Math.floor(r() * 50)));
-            entries.push({ id: `e${++n}`, nid, center: c, userId: pointUser(c, p), kind: "POINT", at: pAt, date, projects: [p], isNew: false });
+            const pAt = atTime(date, cap(date, pMin));
+            entries.push({ id: `e${++n}`, nid, center: c, userId: pointUser(c, p), kind: "POINT", at: pAt, date, projects: [p], isNew: false, queueRef: recId });
           }
         }
         // طفل يُخدم في النقطة بهويته الخاصة
@@ -188,34 +198,77 @@ export function seedDb(): Db {
           const child = validId(r);
           const p = r() < 0.6 ? "UNICEF" : "STC";
           const cAt = atTime(date, cap(date, minute + 20 + Math.floor(r() * 40)));
-          const childNew = touch(child, cAt);
+          const childNew = touch(child, cAt, "CHILD");
           entries.push({ id: `e${++n}`, nid: child, center: c, userId: pointUser(c, p), kind: "POINT", at: cAt, date, projects: [p], isNew: childNew });
         }
       }
     }
   }
 
-  // حالة عرض ثابتة بسجل واضح
-  const demo = "401234562";
-  beneficiaries[demo] = { nid: demo, name: "سعاد محمد النجار", createdAt: atTime(addDays(today, -34), 9 * 60 + 10) };
-  const demoVisits: [number, number, string[]][] = [
-    [34, 9 * 60 + 10, ["WFP", "UNICEF"]],
-    [27, 10 * 60 + 5, ["WFP"]],
-    [20, 9 * 60 + 40, ["WFP", "UNICEF"]],
-    [13, 11 * 60 + 20, ["WFP", "MAP"]],
-    [6, 9 * 60 + 5, ["WFP", "UNICEF"]],
-    [1, 10 * 60, ["WFP"]],
+  // حالات عرض ثابتة بسجل واضح
+  const demos: { nid: string; name: string; type: IdType; visits: [number, number, string[]][] }[] = [
+    {
+      nid: "401234562",
+      name: "سعاد محمد",
+      type: "MOTHER",
+      visits: [
+        [34, 9 * 60 + 10, ["WFP", "UNICEF"]],
+        [27, 10 * 60 + 5, ["WFP"]],
+        [20, 9 * 60 + 40, ["WFP", "UNICEF"]],
+        [13, 11 * 60 + 20, ["WFP", "MAP"]],
+        [6, 9 * 60 + 5, ["WFP", "UNICEF"]],
+        [1, 10 * 60, ["WFP"]],
+      ],
+    },
+    {
+      nid: "403300117",
+      name: "أحمد خليل",
+      type: "FATHER",
+      visits: [
+        [96, 9 * 60 + 30, ["WFP"]],
+        [68, 10 * 60 + 15, ["WFP", "MAP"]],
+        [33, 9 * 60 + 50, ["WFP", "UNICEF"]],
+      ],
+    },
   ];
-  demoVisits.forEach(([ago, m, projects], i) => {
-    const date = addDays(today, -ago);
-    if (new Date(date + "T12:00:00Z").getUTCDay() === 5) return;
-    entries.push({ id: `e${++n}`, nid: demo, center: "KHY", userId: "u-rk", kind: "RECEPTION", at: atTime(date, m), date, projects, isNew: i === 0 });
-    projects.forEach((p) =>
-      entries.push({ id: `e${++n}`, nid: demo, center: "KHY", userId: pointUser("KHY", p), kind: "POINT", at: atTime(date, m + 25), date, projects: [p], isNew: false }),
-    );
-  });
+  for (const demo of demos) {
+    // يوم الجمعة عطلة: الزيارة تنتقل لليوم السابق
+    const visits = demo.visits.map(([ago, m, p]) => [new Date(addDays(today, -ago) + "T12:00:00Z").getUTCDay() === 5 ? ago + 1 : ago, m, p] as [number, number, string[]]);
+    beneficiaries[demo.nid] = { nid: demo.nid, name: demo.name, type: demo.type, createdAt: atTime(addDays(today, -visits[0][0]), visits[0][1]) };
+    visits.forEach(([ago, m, projects], i) => {
+      const date = addDays(today, -ago);
+      const recId = `e${++n}`;
+      entries.push({ id: recId, nid: demo.nid, center: "KHY", userId: "u-rk", kind: "RECEPTION", at: atTime(date, m), date, projects, isNew: i === 0 });
+      projects.forEach((p) =>
+        entries.push({ id: `e${++n}`, nid: demo.nid, center: "KHY", userId: pointUser("KHY", p), kind: "POINT", at: atTime(date, m + 25), date, projects: [p], isNew: false, queueRef: recId }),
+      );
+    });
+  }
 
   entries.sort((a, b) => a.at.localeCompare(b.at));
+
+  // أرقام الدور بترتيب وقت الاستقبال
+  let counters: Record<string, number> = {};
+  for (const e of entries) {
+    if (e.kind !== "RECEPTION") continue;
+    const q = assignQueue(counters, e, e.projects);
+    e.queue = q.queue;
+    counters = q.counters;
+  }
+
+  // حالة اليوم صحّحت نقطة WFP توجيهها إلى UNICEF
+  const served = new Set(entries.filter((e) => e.kind === "POINT" && e.date === today).map((e) => e.queueRef));
+  const wrong = entries.find(
+    (e) => e.kind === "RECEPTION" && e.date === today && e.center === "KHY" && e.projects.join() === "WFP" && !served.has(e.id),
+  );
+  if (wrong) {
+    const q = assignQueue(counters, { ...wrong, queue: {} }, ["UNICEF"]);
+    counters = q.counters;
+    wrong.queueOut = { ...wrong.queue };
+    wrong.queue = q.queue;
+    wrong.projects = ["UNICEF"];
+    wrong.corrected = { by: "u-khy-multi", at: new Date(Math.min(Date.now(), new Date(wrong.at).getTime() + 12 * 60_000)).toISOString(), from: ["WFP"] };
+  }
 
   return {
     version: DB_VERSION,
@@ -225,6 +278,7 @@ export function seedDb(): Db {
     users,
     beneficiaries,
     entries,
+    counters,
     changes: [],
     settings: DEFAULT_SETTINGS,
   };

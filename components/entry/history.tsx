@@ -3,7 +3,7 @@
 import { PenLine, Store, Stethoscope } from "lucide-react";
 import type { Db, Entry } from "@/lib/types";
 import { centerName, projectName, userName } from "@/lib/queries";
-import { cn, dayNum, formatTime } from "@/lib/utils";
+import { cn, dayFull, formatTime } from "@/lib/utils";
 
 export function KindTag({ kind }: { kind: Entry["kind"] }) {
   return kind === "RECEPTION" ? (
@@ -19,18 +19,35 @@ export function KindTag({ kind }: { kind: Entry["kind"] }) {
   );
 }
 
+/** شارة مشروع مع رقم الدور إن وُجد */
+export function ProjectChip({ db, code, number, tone = "sunken" }: { db: Db; code: string; number?: number; tone?: "sunken" | "surface" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-bold",
+        tone === "surface" ? "bg-surface shadow-sm" : "bg-sunken",
+      )}
+    >
+      {projectName(db, code)}
+      {number ? (
+        <span className="num rounded bg-brand px-1 text-[11px] leading-4 text-brand-ink" title="رقم الدور">
+          {number}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function HistoryRow({ e, db, action }: { e: Entry; db: Db; action?: React.ReactNode }) {
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-sm">
-      <span className="num w-[92px] shrink-0 font-semibold">
-        {dayNum(e.date)} <span className="text-muted">{formatTime(e.at)}</span>
+      <span className="num w-[132px] shrink-0 font-semibold">
+        {dayFull(e.date)} <span className="text-muted">{formatTime(e.at)}</span>
       </span>
       <KindTag kind={e.kind} />
       <span className="flex flex-1 flex-wrap items-center gap-1.5">
         {e.projects.map((p) => (
-          <span key={p} className="rounded-md bg-sunken px-2 py-0.5 text-xs font-bold">
-            {projectName(db, p)}
-          </span>
+          <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
         ))}
         {e.corrected && (
           <span
@@ -42,7 +59,7 @@ export function HistoryRow({ e, db, action }: { e: Entry; db: Db; action?: React
           </span>
         )}
       </span>
-      <span className={cn("text-xs text-muted")}>
+      <span className="text-xs text-muted">
         {centerName(db, e.center, true)} · {userName(db, e.userId)}
       </span>
       {action}

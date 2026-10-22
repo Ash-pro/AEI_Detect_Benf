@@ -1,5 +1,6 @@
 import type { CenterCode, Db, Entry, Project, SessionUser } from "./types";
 import { dayFull, formatTime, todayKey, weekday } from "./utils";
+import { idTypeLabel, lastNumber, projectQueue, waitingCount } from "./queue";
 
 /* استعلامات العرض على البيانات التجريبية — تُستبدل بدوال Supabase لاحقاً */
 
@@ -51,6 +52,12 @@ export function filterCenter(entries: Entry[], c: CenterFilter) {
 /* ===== إحصائيات الموظف اليومية ===== */
 
 export interface StaffStats {
+  /** الاستقبال: توزيع حسب نوع الهوية */
+  types: { label: string; count: number }[];
+  /** النقطة: من قائمة الانتظار / بدون دور / تصحيح توجيه */
+  fromQueue: number;
+  noQueue: number;
+  corrected: number;
   total: number;
   isNew: number;
   repeat: number;
@@ -65,7 +72,21 @@ export function staffStats(db: Db, user: SessionUser, center: CenterCode, date =
   mine.forEach((e) => e.projects.forEach((p) => counts.set(p, (counts.get(p) ?? 0) + 1)));
   const cases = user.role === "POINT" ? new Set(mine.map((e) => e.nid)).size : mine.length;
   const sorted = [...mine].sort((a, b) => a.at.localeCompare(b.at));
+  const typeCount = new Map<string, number>();
+  if (user.role !== "POINT")
+    mine.forEach((e) => {
+      const l = idTypeLabel(db.beneficiaries[e.nid]?.type) || "غير محدد";
+      typeCount.set(l, (typeCount.get(l) ?? 0) + 1);
+    });
+  const recToday = db.entries.filter((e) => e.kind === "RECEPTION" && e.date === date && e.center === center);
+  const fromQueue = mine.filter(
+    (e) => e.queueRef || recToday.some((r) => r.nid === e.nid && e.projects.some((p) => r.queue?.[p])),
+  ).length;
   return {
+    types: ["أم", "أب", "طفل", "غير محدد"].filter((l) => typeCount.has(l)).map((l) => ({ label: l, count: typeCount.get(l)! })),
+    fromQueue,
+    noQueue: mine.length - fromQueue,
+    corrected: recToday.filter((e) => e.corrected?.by === user.id).length,
     total: cases,
     isNew: mine.filter((e) => e.isNew).length,
     repeat: cases - mine.filter((e) => e.isNew).length,
@@ -86,11 +107,19 @@ export function staffShareText(db: Db, user: SessionUser, center: CenterCode, s:
   if (user.role === "POINT") {
     lines.push(`الحالات المخدومة: ${s.total}`);
     if (s.perProject.length > 1) s.perProject.forEach((p) => lines.push(`• ${p.name}: ${p.count}`));
+    lines.push(`• من قائمة الانتظار: ${s.fromQueue}`, `• بدون دور: ${s.noQueue}`);
+    lines.push(`• ما زال بانتظار: ${waitingCount(db, center, user.projects, date)}`);
+    if (s.corrected) lines.push(`• صُحّح توجيهها: ${s.corrected}`);
     lines.push(`• جديدة على النظام: ${s.isNew}`);
     if (s.first) lines.push("", `أول حالة: ${formatTime(s.first)}`, `آخر حالة: ${formatTime(s.last!)}`);
   } else {
-    lines.push(`إجمالي الحالات: ${s.total}`, `• جديدة: ${s.isNew}`, `• متكررة: ${s.repeat}`, "", "التوجيه حسب المشروع:");
-    s.perProject.filter((p) => p.count).sort((a, b) => b.count - a.count).forEach((p) => lines.push(`• ${p.name}: ${p.count}`));
+    lines.push(`إجمالي الحالات: ${s.total}`, `• جديدة: ${s.isNew}`, `• متكررة: ${s.repeat}`);
+    if (s.types.length) lines.push(`• ${s.types.map((t) => `${t.label} ${t.count}`).join(" · ")}`);
+    lines.push("", "التوجيه حسب المشروع:");
+    s.perProject
+      .filter((p) => p.count)
+      .sort((a, b) => b.count - a.count)
+      .forEach((p) => lines.push(`• ${p.name}: ${p.count} (آخر دور ${lastNumber(db, center, p.code, date)})`));
   }
   lines.push("", `آخر تحديث: ${formatTime(new Date().toISOString())}`);
   return lines.join("\n");
@@ -103,7 +132,11 @@ export interface ProjectRow {
   name: string;
   referred: number;
   served: number;
-  byCenter: Record<CenterCode, { referred: number; served: number }>;
+  /** ما زال بانتظار الخدمة */
+  waiting: number;
+  /** آخر رقم دور (مجموع المراكز عند "الكل") */
+  lastQueue: number;
+  byCenter: Record<CenterCode, { referred: number; served: number; waiting: number; lastQueue: number }>;
 }
 
 export interface DayStats {
@@ -121,10 +154,15 @@ export function dayStats(db: Db, date: string, center: CenterFilter): DayStats {
   const rec = list.filter((e) => e.kind === "RECEPTION");
   const pt = list.filter((e) => e.kind === "POINT");
   const projects = allProjects(db).map((p) => {
+    const centers: CenterCode[] = center === "ALL" ? ["GAZA", "KHY"] : [center];
     const byCenter = {
-      GAZA: { referred: 0, served: 0 },
-      KHY: { referred: 0, served: 0 },
+      GAZA: { referred: 0, served: 0, waiting: 0, lastQueue: 0 },
+      KHY: { referred: 0, served: 0, waiting: 0, lastQueue: 0 },
     } as ProjectRow["byCenter"];
+    centers.forEach((c) => {
+      byCenter[c].waiting = projectQueue(db, c, p.code, date).filter((x) => x.status === "wait").length;
+      byCenter[c].lastQueue = lastNumber(db, c, p.code, date);
+    });
     rec.forEach((e) => e.projects.includes(p.code) && byCenter[e.center].referred++);
     pt.forEach((e) => e.projects.includes(p.code) && byCenter[e.center].served++);
     return {
@@ -132,6 +170,8 @@ export function dayStats(db: Db, date: string, center: CenterFilter): DayStats {
       name: p.name,
       referred: byCenter.GAZA.referred + byCenter.KHY.referred,
       served: byCenter.GAZA.served + byCenter.KHY.served,
+      waiting: byCenter.GAZA.waiting + byCenter.KHY.waiting,
+      lastQueue: byCenter.GAZA.lastQueue + byCenter.KHY.lastQueue,
       byCenter,
     };
   });
@@ -175,9 +215,9 @@ export function adminShareText(db: Db, s: DayStats, center: CenterFilter): strin
     `حالات الاستقبال: ${s.reception} (جديدة: ${s.receptionNew})`,
     `حالات النقاط: ${s.point}`,
     "",
-    "حسب المشروع (موجّه / مخدوم):",
+    "حسب المشروع (موجّه / مخدوم / بانتظار):",
   ];
-  s.projects.filter((p) => p.referred || p.served).forEach((p) => lines.push(`• ${p.name}: ${p.referred} / ${p.served}`));
+  s.projects.filter((p) => p.referred || p.served).forEach((p) => lines.push(`• ${p.name}: ${p.referred} / ${p.served} / ${p.waiting}`));
   return lines.join("\n");
 }
 
