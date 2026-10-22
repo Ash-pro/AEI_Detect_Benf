@@ -73,8 +73,8 @@ export function BeneficiaryEditor({ beneficiary, open = true }: { beneficiary: B
 
   const changed = name.trim() !== beneficiary.name || type !== beneficiary.type;
 
-  function save() {
-    const e = updateBeneficiary(beneficiary.nid, { name, type });
+  async function save() {
+    const e = await updateBeneficiary(beneficiary.nid, { name, type });
     if (e) return setErr(e);
     toast("تم حفظ بيانات الهوية");
   }
@@ -125,8 +125,8 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
         <Button
           size="sm"
           disabled={!changed}
-          onClick={() => {
-            const e = updateEntryProjects(entry.id, sel);
+          onClick={async () => {
+            const e = await updateEntryProjects(entry.id, sel);
             if (e) setErr(e);
             else {
               setErr("");
@@ -141,8 +141,9 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
             <Button
               size="sm"
               variant="danger"
-              onClick={() => {
-                deleteEntry(entry.id);
+              onClick={async () => {
+                const e = await deleteEntry(entry.id);
+                if (e) return setErr(e);
                 toast("تم حذف الإدخال", "info");
               }}
             >
@@ -179,10 +180,11 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
             variant="secondary"
             size="lg"
             disabled={newId.length !== 9}
-            onClick={() => {
-              const e = moveEntry(entry.id, newId);
+            onClick={async () => {
+              const known = Boolean(db.beneficiaries[newId]);
+              const e = await moveEntry(entry.id, newId);
               if (e) return setErr(e);
-              toast(db.beneficiaries[newId] ? "نُقل الإدخال إلى الهوية الصحيحة المسجلة" : "تم تصحيح رقم الهوية");
+              toast(known ? "نُقل الإدخال إلى الهوية الصحيحة المسجلة" : "تم تصحيح رقم الهوية");
               onMoved(newId);
             }}
           >

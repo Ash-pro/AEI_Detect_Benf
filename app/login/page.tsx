@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, Eye, EyeOff, FlaskConical, LogIn, TimerOff } from "lucide-react";
+import { Download, Eye, EyeOff, LogIn, TimerOff } from "lucide-react";
 import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { AuthLayout } from "@/components/shell/auth-layout";
 import { Card } from "@/components/ui/card";
@@ -11,12 +11,9 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
 import { useStore } from "@/lib/store";
 import { homePath } from "@/lib/roles";
-import { DEMO_PASSWORD } from "@/lib/mock-data";
-import { centerName, projectName } from "@/lib/queries";
+import { centerName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { CENTER_STYLE } from "@/components/shell/center-theme";
-
-const DEMO = ["admin", "supervisor", "reception.khy", "reception.gaza", "unicef.khy", "wfp.gaza", "multi.khy"];
 
 /** الشاشة 2 — تسجيل الدخول */
 function LoginInner() {
@@ -27,6 +24,7 @@ function LoginInner() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -34,17 +32,19 @@ function LoginInner() {
     else if (!center) router.replace("/setup");
   }, [ready, center, user, router]);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     if (!username || !password) return setError("أدخل اسم المستخدم وكلمة المرور");
-    const r = login(username, password);
+    setBusy(true);
+    const r = await login(username, password);
+    setBusy(false);
     if (r.error) return setError(r.error);
     router.replace(homePath(r.user!.role));
   }
 
   if (!ready || !center) return <div className="min-h-dvh" />;
   const st = CENTER_STYLE[center];
-  const demoUsers = DEMO.map((u) => db.users.find((x) => x.username === u)).filter(Boolean);
 
   return (
     <AuthLayout>
@@ -115,9 +115,9 @@ function LoginInner() {
             </div>
           </div>
 
-          <Button type="submit" size="lg" block className="mt-6">
+          <Button type="submit" size="lg" block className="mt-6" disabled={busy}>
             <LogIn className="size-5" />
-            دخول
+            {busy ? "جارٍ الدخول…" : "دخول"}
           </Button>
           {!isStandalone() && (
             <button
@@ -132,38 +132,6 @@ function LoginInner() {
         </form>
       </Card>
 
-      <div className="mt-5 rounded-2xl border border-dashed border-line p-4">
-        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
-          <FlaskConical className="size-4" />
-          حسابات تجريبية للعرض — كلمة المرور {DEMO_PASSWORD}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {demoUsers.map((u) => (
-            <button
-              key={u!.id}
-              type="button"
-              onClick={() => {
-                setUsername(u!.username);
-                setPassword(DEMO_PASSWORD);
-                setError("");
-              }}
-              className="focus-ring rounded-xl bg-surface px-3 py-2 text-start text-sm shadow-card hover:bg-sunken"
-            >
-              <span className="block font-semibold">{u!.fullName}</span>
-              <span className="block text-xs text-muted">
-                <span className="ltr">{u!.username}</span> ·{" "}
-                {u!.role === "ADMIN"
-                  ? "أدمن"
-                  : u!.role === "SUPERVISOR"
-                    ? "مشرف — سجل الأيام"
-                  : u!.role === "RECEPTION"
-                    ? `استقبال ${u!.centers.map((c) => centerName(db, c, true)).join(" و")}`
-                    : `نقطة ${u!.projects.map((p) => projectName(db, p)).join(" + ")} · ${centerName(db, u!.centers[0], true)}`}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
     </AuthLayout>
   );
 }

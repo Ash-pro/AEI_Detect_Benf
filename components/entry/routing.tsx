@@ -127,8 +127,8 @@ export function RoutingDialog({
   if (!reception) return null;
   const changed = sel.slice().sort().join() !== reception.projects.slice().sort().join();
 
-  function save() {
-    const e = correctRouting(reception!.id, sel, del);
+  async function save() {
+    const e = await correctRouting(reception!.id, sel, del);
     if (e) return setErr(e);
     onDone(sel);
   }

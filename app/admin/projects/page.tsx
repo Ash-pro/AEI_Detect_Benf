@@ -77,9 +77,17 @@ export default function ProjectsPage() {
   }, [db.entries, month]);
   const staffCount = (code: string) => db.users.filter((u) => u.projects.includes(code) && u.active).length;
 
+  /** حفظ مع رسالة نجاح أو خطأ */
+  const save = async (p: Project, ok?: string) => {
+    const e = await saveProject(p);
+    if (e) toast(e, "bad");
+    else if (ok) toast(ok);
+  };
+
   const toggleCenter = (p: Project, c: CenterCode) => {
     const centers = p.centers.includes(c) ? p.centers.filter((x) => x !== c) : [...p.centers, c];
-    saveProject({ ...p, centers });
+    if (!centers.length) return toast("المشروع يجب أن يظهر في مركز واحد على الأقل", "bad");
+    void save({ ...p, centers });
   };
 
   return (
@@ -100,16 +108,15 @@ export default function ProjectsPage() {
         {list.map((p, i) => (
           <Card key={p.code} className={cn("p-4", !p.active && "bg-sunken/40")}>
             <div className="flex items-start gap-2">
-              <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => (saveProject({ ...p, color }), toast(`تم تغيير لون ${p.name}`))} />
+              <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`)} />
               <div className="min-w-0 flex-1">
-                <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
+                <NameCell project={p} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع")} />
                 <code className="mt-0.5 block px-2 text-start text-[11px] text-muted">{p.code}</code>
               </div>
               <Switch
                 checked={p.active}
                 onChange={(v) => {
-                  saveProject({ ...p, active: v });
-                  toast(v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
+                  void save({ ...p, active: v }, v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
                 }}
                 label={`تفعيل ${p.name}`}
               />
@@ -192,9 +199,9 @@ export default function ProjectsPage() {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => (saveProject({ ...p, color }), toast(`تم تغيير لون ${p.name}`))} />
+                      <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`)} />
                       <div className="min-w-0 flex-1">
-                        <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
+                        <NameCell project={p} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع")} />
                         <code className="mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
                       </div>
                     </div>
@@ -221,8 +228,7 @@ export default function ProjectsPage() {
                     <Switch
                       checked={p.active}
                       onChange={(v) => {
-                        saveProject({ ...p, active: v });
-                        toast(v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
+                        void save({ ...p, active: v }, v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
                       }}
                       label={`تفعيل ${p.name}`}
                     />
@@ -302,13 +308,14 @@ function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [centers, setCenters] = useState<CenterCode[]>(["GAZA", "KHY"]);
   const [err, setErr] = useState("");
 
-  function submit() {
+  async function submit() {
     const c = code.trim().toUpperCase();
     if (!name.trim()) return setErr("اكتب اسم المشروع");
     if (!/^[A-Z0-9_]{2,12}$/.test(c)) return setErr("الرمز من 2 إلى 12 حرفاً إنجليزياً كبيراً أو أرقام");
     if (db.projects.some((p) => p.code === c)) return setErr("هذا الرمز مستخدم لمشروع آخر");
     if (!centers.length) return setErr("اختر مركزاً واحداً على الأقل");
-    saveProject({ code: c, name: name.trim(), active: true, order: db.projects.length + 1, centers });
+    const e = await saveProject({ code: c, name: name.trim(), active: true, order: db.projects.length + 1, centers });
+    if (e) return setErr(e);
     toast(`تمت إضافة ${name.trim()}`);
     setName("");
     setCode("");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CircleAlert, FlaskConical, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
+import { CalendarDays, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
 import { AppGate } from "@/components/shell/app-gate";
 import { StaffHeader } from "@/components/shell/app-header";
 import { IdInput } from "@/components/entry/id-input";
@@ -28,7 +28,6 @@ import {
   type StaffStats,
   visibleHistory,
 } from "@/lib/queries";
-import { freshValidId } from "@/lib/mock-data";
 import { idTypeLabel, type QueueItem, waitingCount } from "@/lib/queue";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import type { IdType } from "@/lib/types";
@@ -124,8 +123,16 @@ function EntryScreen() {
     setIdType(undefined);
     setShowErr(false);
     setQueueRef(null);
+    setChecking(false);
+    setLookupError("");
+    pending.current = null;
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
+
+  // البحث عن الهوية وسجلها في قاعدة البيانات
+  const [checking, setChecking] = useState(false);
+  const [lookupError, setLookupError] = useState("");
+  const pending = useRef<{ id: string; ref: QueueItem | null } | null>(null);
 
   function open(id: string, ref: QueueItem | null = queueRef) {
     setNid(id);
@@ -133,8 +140,23 @@ function EntryScreen() {
     setName("");
     setIdType(undefined);
     setShowErr(false);
-    setSelected(preselect(id, ref));
+    setSelected([]);
+    setLookupError("");
+    setChecking(true);
+    pending.current = { id, ref };
+    store
+      .lookup(id)
+      .catch(() => pending.current?.id === id && setLookupError("تعذّر البحث عن الهوية. تأكد من الإنترنت وأعد المحاولة"))
+      .finally(() => pending.current?.id === id && setChecking(false));
   }
+
+  // بعد وصول السجل: تحديد المشاريع مسبقاً
+  useEffect(() => {
+    if (checking || !pending.current || pending.current.id !== nid) return;
+    setSelected(preselect(nid, pending.current.ref));
+    pending.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking, nid]);
 
   /** اختيار حالة من قائمة الانتظار */
   function pick(item: QueueItem) {
@@ -148,7 +170,7 @@ function EntryScreen() {
   }
 
   // الحالة الجديدة: المؤشر ينتقل لحقل الاسم مباشرة
-  const isNew = Boolean(nid) && !beneficiary;
+  const isNew = Boolean(nid) && !checking && !lookupError && !beneficiary;
   useEffect(() => {
     if (isNew) requestAnimationFrame(() => nameRef.current?.focus());
   }, [isNew, nid]);
@@ -167,8 +189,10 @@ function EntryScreen() {
     }
   }
 
-  function submit() {
-    if (!nid) return;
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!nid || busy) return;
     if (!store.online) return setFormError("لا يوجد اتصال بالإنترنت. انتظر عودة الاتصال ثم أعد المحاولة");
     if (isNew && (!name.trim() || !idType)) {
       setShowErr(true);
@@ -177,7 +201,9 @@ function EntryScreen() {
       return;
     }
     const ref = queueRef && selected.includes(queueRef.project) ? queueRef.reception.id : undefined;
-    const r = store.addEntry({ nid, projects: selected, name, type: idType, queueRef: ref });
+    setBusy(true);
+    const r = await store.addEntry({ nid, projects: selected, name, type: idType, queueRef: ref });
+    setBusy(false);
     if (!r.ok) return setFormError(r.error);
     const done = r.mode === "updated" ? r.entry.projects : selected.filter((p) => !r.skipped.includes(p));
     const names = done.map((p) => projectName(db, p)).join("، ");
@@ -254,11 +280,27 @@ function EntryScreen() {
 
       <IdInput ref={inputRef} value={raw} onChange={onChange} onEnter={() => (nid ? submit() : raw.length < 9 && setError("رقم الهوية يجب أن يكون 9 أرقام"))} onClear={reset} error={error} />
 
-      {beneficiary && (
+      {nid && checking && (
+        <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-line bg-surface px-4 py-6 text-sm font-semibold text-muted">
+          <span className="size-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          جارٍ البحث عن الهوية…
+        </div>
+      )}
+
+      {nid && lookupError && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">
+          {lookupError}
+          <Button size="sm" variant="secondary" onClick={() => open(nid)}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      )}
+
+      {beneficiary && !checking && (
         <BeneficiaryCard db={db} beneficiary={beneficiary} history={history} status={status} onEdit={() => setEditOpen(true)} />
       )}
 
-      {nid && (
+      {nid && !checking && !lookupError && (
         <Card className="animate-fade-up space-y-5 p-5">
           {isNew && (
             <>
@@ -326,14 +368,13 @@ function EntryScreen() {
             <Button variant="secondary" size="lg" onClick={reset}>
               إلغاء
             </Button>
-            <Button size="xl" className="w-full sm:flex-1" disabled={!selected.length} onClick={submit}>
-              {!isPoint && todayHere ? "تحديث إدخال اليوم" : isPoint ? "إدخال الخدمة" : "إدخال"}
+            <Button size="xl" className="w-full sm:flex-1" disabled={!selected.length || busy} onClick={submit}>
+              {busy ? "جارٍ الحفظ…" : !isPoint && todayHere ? "تحديث إدخال اليوم" : isPoint ? "إدخال الخدمة" : "إدخال"}
             </Button>
           </div>
         </Card>
       )}
 
-      {!nid && !raw && <TestPanel onPick={(id) => onChange(id)} />}
       </>
       )}
 
@@ -521,53 +562,6 @@ function StatusLine({ tone, icon, children }: { tone: "ok" | "info" | "muted"; i
       <span className="mt-0.5 shrink-0">{icon}</span>
       <p>{children}</p>
     </div>
-  );
-}
-
-/** أمثلة للاختبار — تُحذف عند ربط قاعدة البيانات */
-function TestPanel({ onPick }: { onPick: (id: string) => void }) {
-  const { db, center, user } = useStore();
-  const today = todayKey();
-  const items = useMemo(() => {
-    const here = db.entries.filter((e) => e.center === center);
-    const list: { id: string; label: string }[] = [];
-    const returning = center === "KHY" ? "401234562" : here.find((e) => e.kind === "RECEPTION" && e.date !== today)?.nid;
-    if (returning) list.push({ id: returning, label: "حالة مسجلة لها سجل زيارات" });
-    list.push({ id: "403300117", label: "آخر زيارة منذ شهر" });
-    if (user?.role === "POINT") {
-      const servedIds = new Set(db.entries.filter((e) => e.kind === "POINT" && e.date === today).map((e) => e.nid));
-      const referred = here.find((e) => e.kind === "RECEPTION" && e.date === today && e.projects.some((p) => user.projects.includes(p)) && !servedIds.has(e.nid));
-      if (referred) list.push({ id: referred.nid, label: "مرّت على الاستقبال اليوم ولم تُخدم" });
-      const served = here.find((e) => e.kind === "POINT" && e.date === today && user.projects.includes(e.projects[0]));
-      if (served) list.push({ id: served.nid, label: "أُدخلت اليوم في مشروعك" });
-    } else {
-      const t = here.find((e) => e.kind === "RECEPTION" && e.date === today);
-      if (t) list.push({ id: t.nid, label: "أُدخلت اليوم في الاستقبال" });
-    }
-    list.push({ id: freshValidId(db), label: "هوية جديدة غير مسجلة" });
-    return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center, user]);
-
-  return (
-    <section className="rounded-2xl border border-dashed border-line p-4">
-      <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
-        <FlaskConical className="size-4" />
-        أمثلة للاختبار — للعرض فقط
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {items.map((d) => (
-          <button
-            key={d.id + d.label}
-            onClick={() => onPick(d.id)}
-            className="focus-ring flex items-center gap-3 rounded-xl bg-surface px-3 py-2.5 text-start text-sm shadow-card hover:bg-sunken"
-          >
-            <span className="num w-[86px] shrink-0 font-semibold">{d.id}</span>
-            <span className="truncate text-muted">{d.label}</span>
-          </button>
-        ))}
-      </div>
-    </section>
   );
 }
 

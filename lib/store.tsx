@@ -1,49 +1,38 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Beneficiary, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
-import { assignQueue } from "./queue";
-import { nextColor, withColors } from "./project-colors";
-import { DB_VERSION, seedDb } from "./mock-data";
-import { dateKey, storageGet, storageSet, todayKey, uuid } from "./utils";
-import { isStaff } from "./roles";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
+import { supabase, usernameToEmail } from "./supabase/client";
+import {
+  errorText,
+  loadBeneficiary,
+  loadCenters,
+  loadChanges,
+  loadCounters,
+  loadEntries,
+  loadProfile,
+  loadProjects,
+  loadSettings,
+  loadUsers,
+  type EntryBatch,
+  type EntryScope,
+} from "./data";
+import { deleteUserAction, saveUserAction } from "@/app/actions/users";
+import { addDays, dateKey, storageGet, storageSet, todayKey } from "./utils";
+import { isBackOffice, isStaff } from "./roles";
 
-/* مخزن تجريبي في المتصفح — للتصميم والاختبار فقط، بدون قاعدة بيانات */
+/* المخزن: يقرأ من Supabase ويحتفظ بنسخة في الذاكرة بنفس شكل الواجهة.
+   الكتابة كلها عبر دوال قاعدة البيانات (RPC)، والتحديث اللحظي عبر Realtime. */
 
-const DB_KEY = "aei.v2.db";
 const CENTER_KEY = "aei.v2.center";
-const USER_KEY = "aei.v2.user";
+/** أيام البيانات المحمّلة: الإدارة 62 يوماً، والموظف إدخالاته آخر 31 يوماً + كل إدخالات مركزه اليوم */
+const BACK_OFFICE_DAYS = 62;
+const STAFF_DAYS = 31;
 
 export type AddEntryResult =
   | { ok: true; mode: "created" | "updated"; entry: Entry; isNew: boolean; skipped: string[]; added: string[] }
   | { ok: false; error: string };
-
-interface Ctx {
-  ready: boolean;
-  online: boolean;
-  db: Db;
-  center: CenterCode | null;
-  user: SessionUser | null;
-  setCenter: (c: CenterCode | null) => void;
-  login: (username: string, password: string) => { user?: SessionUser; error?: string };
-  logout: () => void;
-
-  addEntry: (input: AddEntryInput) => AddEntryResult;
-  renameBeneficiary: (nid: string, name: string) => void;
-  updateBeneficiary: (nid: string, data: { name: string; type?: IdType }) => string | null;
-  updateEntryProjects: (entryId: string, projects: string[]) => string | null;
-  deleteEntry: (entryId: string) => void;
-  correctRouting: (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => string | null;
-  moveEntry: (entryId: string, newNid: string) => string | null;
-
-  saveUser: (u: User) => string | null;
-  deleteUser: (id: string) => void;
-  saveProject: (p: Project) => string | null;
-  moveProject: (code: string, dir: -1 | 1) => void;
-  renameCenter: (code: CenterCode, name: string) => void;
-  saveSettings: (s: Settings) => void;
-  resetDemo: () => void;
-}
 
 export interface AddEntryInput {
   nid: string;
@@ -55,10 +44,38 @@ export interface AddEntryInput {
   queueRef?: string;
 }
 
+interface Ctx {
+  ready: boolean;
+  online: boolean;
+  db: Db;
+  center: CenterCode | null;
+  user: SessionUser | null;
+  setCenter: (c: CenterCode | null) => void;
+  login: (username: string, password: string) => Promise<{ user?: SessionUser; error?: string }>;
+  logout: () => Promise<void>;
+  /** تحميل هوية وسجلها كاملاً من الخادم */
+  lookup: (nid: string) => Promise<void>;
+  refresh: () => Promise<void>;
+
+  addEntry: (input: AddEntryInput) => Promise<AddEntryResult>;
+  updateBeneficiary: (nid: string, data: { name: string; type?: IdType }) => Promise<string | null>;
+  updateEntryProjects: (entryId: string, projects: string[]) => Promise<string | null>;
+  deleteEntry: (entryId: string) => Promise<string | null>;
+  correctRouting: (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => Promise<string | null>;
+  moveEntry: (entryId: string, newNid: string) => Promise<string | null>;
+
+  saveUser: (u: User) => Promise<string | null>;
+  deleteUser: (id: string) => Promise<string | null>;
+  saveProject: (p: Project) => Promise<string | null>;
+  moveProject: (code: string, dir: -1 | 1) => Promise<void>;
+  renameCenter: (code: CenterCode, name: string) => Promise<void>;
+  saveSettings: (s: Settings) => Promise<string | null>;
+}
+
 const StoreContext = createContext<Ctx | null>(null);
 
 const EMPTY: Db = {
-  version: DB_VERSION,
+  version: 1,
   seededOn: "",
   centers: [],
   projects: [],
@@ -75,370 +92,427 @@ const strip = (u: User): SessionUser => {
   return rest;
 };
 
+const byTime = (a: Entry, b: Entry) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id);
+
+/** دمج دفعة إدخالات: تستبدل كل ما يطابق `replace` */
+function merge(d: Db, batch: EntryBatch, replace: (e: Entry) => boolean): Db {
+  const ids = new Set(batch.entries.map((e) => e.id));
+  const entries = d.entries.filter((e) => !replace(e) && !ids.has(e.id)).concat(batch.entries).sort(byTime);
+  return { ...d, entries, beneficiaries: { ...d.beneficiaries, ...batch.beneficiaries } };
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const sb = supabase();
   const [ready, setReady] = useState(false);
   const [db, setDb] = useState<Db>(EMPTY);
   const [center, setCenterState] = useState<CenterCode | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [online, setOnline] = useState(true);
-  const saveTimer = useRef<number | null>(null);
+  const dbRef = useRef(db);
+  dbRef.current = db;
+  const userRef = useRef<SessionUser | null>(null);
+  userRef.current = user;
+  const centerRef = useRef<CenterCode | null>(null);
+  centerRef.current = center;
+  const channel = useRef<RealtimeChannel | null>(null);
+  const timer = useRef<number | null>(null);
+
+  const projectOrder = () => new Map(dbRef.current.projects.map((p) => [p.code, p.order]));
+
+  /* ===== التحميل ===== */
+
+  const loadAll = useCallback(
+    async (u: SessionUser, c: CenterCode | null) => {
+      const today = todayKey();
+      const back = isBackOffice(u.role);
+      const [projects, users, settings] = await Promise.all([loadProjects(sb), loadUsers(sb), loadSettings(sb)]);
+      const order = new Map(projects.map((p) => [p.code, p.order]));
+      const fromDay = addDays(today, -(back ? BACK_OFFICE_DAYS : STAFF_DAYS));
+      const [counters, changes, batches] = await Promise.all([
+        loadCounters(sb, fromDay),
+        u.role === "ADMIN" ? loadChanges(sb) : Promise.resolve([]),
+        back
+          ? Promise.all([loadEntries(sb, { fromDay }, order)])
+          : Promise.all([
+              loadEntries(sb, { day: today, center: c ?? undefined }, order),
+              loadEntries(sb, { fromDay, userId: u.id, center: c ?? undefined }, order),
+            ]),
+      ]);
+      setDb((d) => {
+        let next: Db = { ...d, projects, users, settings, counters, changes, entries: [], beneficiaries: {} };
+        batches.forEach((b) => (next = merge(next, b, () => false)));
+        return next;
+      });
+    },
+    [sb],
+  );
+
+  /** تحديث إدخالات اليوم وأرقام الدور (بعد أي كتابة أو حدث لحظي) */
+  const refreshToday = useCallback(async () => {
+    const u = userRef.current;
+    if (!u) return;
+    const today = todayKey();
+    const c = isStaff(u.role) ? centerRef.current ?? undefined : undefined;
+    const scope: EntryScope = { day: today, ...(c ? { center: c } : {}) };
+    try {
+      const [batch, counters] = await Promise.all([loadEntries(sb, scope, projectOrder()), loadCounters(sb, today)]);
+      setDb((d) => ({
+        ...merge(d, batch, (e) => e.date === today && (!c || e.center === c)),
+        counters: { ...d.counters, ...counters },
+      }));
+    } catch {
+      /* يُعاد عند الحدث التالي */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sb]);
+
+  const lookup = useCallback(
+    async (nid: string) => {
+      const [b, batch] = await Promise.all([loadBeneficiary(sb, nid), loadEntries(sb, { nid }, projectOrder())]);
+      setDb((d) => {
+        const next = merge(d, batch, (e) => e.nid === nid);
+        const beneficiaries = { ...next.beneficiaries };
+        if (b) beneficiaries[nid] = b;
+        else delete beneficiaries[nid];
+        return { ...next, beneficiaries };
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sb],
+  );
+
+  const reloadRefs = useCallback(async () => {
+    const [projects, users, centers, settings] = await Promise.all([loadProjects(sb), loadUsers(sb), loadCenters(sb), loadSettings(sb)]);
+    const changes = userRef.current?.role === "ADMIN" ? await loadChanges(sb) : dbRef.current.changes;
+    setDb((d) => ({ ...d, projects, users, centers, settings, changes }));
+  }, [sb]);
+
+  /* ===== التحديث اللحظي ===== */
+
+  const subscribe = useCallback(() => {
+    channel.current?.unsubscribe();
+    const schedule = () => {
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => void refreshToday(), 500);
+    };
+    channel.current = sb
+      .channel("entries-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, schedule)
+      .on("postgres_changes", { event: "*", schema: "public", table: "entry_projects" }, schedule)
+      .subscribe();
+  }, [sb, refreshToday]);
+
+  /* ===== البدء ===== */
 
   useEffect(() => {
-    const stored = storageGet<Db | null>(DB_KEY, null);
-    let initial: Db;
-    if (!stored || stored.version !== DB_VERSION) initial = seedDb();
-    else if (stored.seededOn !== todayKey()) {
-      // يوم جديد: إدخالات تجريبية جديدة، مع الإبقاء على المستخدمين والمشاريع والإعدادات
-      const fresh = seedDb();
-      initial = { ...fresh, users: stored.users, projects: stored.projects, centers: stored.centers, settings: stored.settings, changes: stored.changes };
-    } else initial = stored;
-    initial = { ...initial, projects: withColors(initial.projects) };
-    setDb(initial);
-    setCenterState(storageGet<CenterCode | null>(CENTER_KEY, null));
-    const u = storageGet<SessionUser | null>(USER_KEY, null);
-    const fresh = u ? initial.users.find((x) => x.id === u.id && x.active) : undefined;
-    setUser(fresh ? strip(fresh) : null);
+    let alive = true;
+    const c = storageGet<CenterCode | null>(CENTER_KEY, null);
+    setCenterState(c);
+    centerRef.current = c;
     setOnline(navigator.onLine);
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    // مزامنة بين تبويبات المتصفح: الاستقبال في تبويب والنقطة في آخر
-    const sync = (e: StorageEvent) => {
-      if (e.key !== DB_KEY || !e.newValue) return;
-      try {
-        const next = JSON.parse(e.newValue) as Db;
-        if (next.version === DB_VERSION) setDb(next);
-      } catch {
-        /* تجاهل */
-      }
+    const on = () => {
+      setOnline(true);
+      void refreshToday();
     };
+    const off = () => setOnline(false);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
-    window.addEventListener("storage", sync);
-    setReady(true);
+
+    (async () => {
+      try {
+        const centers = await loadCenters(sb);
+        if (alive) setDb((d) => ({ ...d, centers }));
+        const { data } = await sb.auth.getSession();
+        const uid = data.session?.user.id;
+        if (uid) {
+          const profile = await loadProfile(sb, uid);
+          if (profile && profile.active && (!isStaff(profile.role) || (c && profile.centers.includes(c)))) {
+            const s = strip(profile);
+            userRef.current = s;
+            await loadAll(s, c);
+            if (!alive) return;
+            setUser(s);
+            subscribe();
+          } else {
+            await sb.auth.signOut();
+          }
+        }
+      } catch {
+        /* بدون اتصال: تبقى الشاشة على الدخول */
+      }
+      if (alive) setReady(true);
+    })();
+
+    const visible = () => document.visibilityState === "visible" && void refreshToday();
+    document.addEventListener("visibilitychange", visible);
     return () => {
+      alive = false;
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
-      window.removeEventListener("storage", sync);
+      document.removeEventListener("visibilitychange", visible);
+      channel.current?.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => storageSet(DB_KEY, db), 400);
-  }, [db, ready]);
-
-  const log = useCallback(
-    (d: Db, action: string, detail: string): Db => ({
-      ...d,
-      changes: [{ id: uuid(), at: new Date().toISOString(), userId: user?.id ?? "", action, detail }, ...d.changes].slice(0, 500),
-    }),
-    [user],
-  );
 
   const setCenter = useCallback((c: CenterCode | null) => {
     storageSet(CENTER_KEY, c);
+    centerRef.current = c;
     setCenterState(c);
   }, []);
 
   const login = useCallback(
-    (username: string, password: string) => {
-      const u = db.users.find((x) => x.username.toLowerCase() === username.trim().toLowerCase());
-      if (!u || u.password !== password) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
-      if (!u.active) return { error: "هذا الحساب موقوف. تواصل مع إدارة الموقع" };
-      if (isStaff(u.role) && center && !u.centers.includes(center)) {
-        const name = db.centers.find((c) => c.code === center)?.name;
+    async (username: string, password: string) => {
+      const { data, error } = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
+      if (error || !data.user) {
+        if (/fetch|network/i.test(error?.message ?? "")) return { error: "تعذّر الاتصال بالخادم. تأكد من الإنترنت" };
+        return { error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
+      }
+      const profile = await loadProfile(sb, data.user.id);
+      if (!profile) {
+        await sb.auth.signOut();
+        return { error: "هذا الحساب غير مكتمل. تواصل مع إدارة الموقع" };
+      }
+      if (!profile.active) {
+        await sb.auth.signOut();
+        return { error: "هذا الحساب موقوف. تواصل مع إدارة الموقع" };
+      }
+      const c = centerRef.current;
+      if (isStaff(profile.role) && (!c || !profile.centers.includes(c))) {
+        await sb.auth.signOut();
+        const name = dbRef.current.centers.find((x) => x.code === c)?.name ?? "هذا المركز";
         return { error: `حسابك غير مسموح له بالعمل في ${name}` };
       }
-      const s = strip(u);
-      storageSet(USER_KEY, s);
+      const s = strip(profile);
+      userRef.current = s;
+      try {
+        await loadAll(s, c);
+      } catch (e) {
+        await sb.auth.signOut();
+        return { error: errorText(e) };
+      }
       setUser(s);
+      subscribe();
       return { user: s };
     },
-    [db, center],
+    [sb, loadAll, subscribe],
   );
 
-  const logout = useCallback(() => {
-    storageSet(USER_KEY, null);
+  const logout = useCallback(async () => {
+    channel.current?.unsubscribe();
+    channel.current = null;
+    userRef.current = null;
     setUser(null);
-  }, []);
+    setDb((d) => ({ ...EMPTY, centers: d.centers }));
+    await sb.auth.signOut();
+  }, [sb]);
 
   /* ===== الإدخال ===== */
 
-  const addEntry = useCallback(
-    (input: AddEntryInput): AddEntryResult => {
-      if (!user || !center) return { ok: false, error: "انتهت الجلسة، سجّل الدخول من جديد" };
-      const today = todayKey();
-      const now = new Date().toISOString();
-      const kind: Entry["kind"] = user.role === "POINT" ? "POINT" : "RECEPTION";
-      const isNew = !db.beneficiaries[input.nid];
-      if (isNew) {
-        if (!input.name?.trim()) return { ok: false, error: "اكتب اسم المستفيد — الاسم الأول يكفي" };
-        if (!input.type) return { ok: false, error: "اختر نوع الهوية: أب أو أم أو طفل" };
-      }
-      if (!input.projects.length) return { ok: false, error: "اختر مشروعاً واحداً على الأقل" };
-      const beneficiary: Beneficiary = db.beneficiaries[input.nid] ?? {
-        nid: input.nid,
-        name: input.name!.trim().replace(/\s+/g, " "),
-        type: input.type,
-        createdAt: now,
-      };
-
-      if (kind === "RECEPTION") {
-        const existing = db.entries.find(
-          (e) => e.kind === "RECEPTION" && e.nid === input.nid && e.date === today && e.center === center,
-        );
-        if (existing) {
-          const q = assignQueue(db.counters, existing, input.projects);
-          const updated = { ...existing, projects: input.projects, queue: q.queue };
-          setDb((d) =>
-            log(
-              { ...d, counters: { ...d.counters, ...q.counters }, entries: d.entries.map((e) => (e.id === existing.id ? updated : e)) },
-              "تحديث إدخال اليوم",
-              `${input.nid}: ${input.projects.join("، ")}`,
-            ),
-          );
-          return { ok: true, mode: "updated", entry: updated, isNew: false, skipped: [], added: q.added };
-        }
-      }
-
-      let projects = input.projects;
-      const skipped: string[] = [];
-      if (kind === "POINT") {
-        const done = new Set(
-          db.entries.filter((e) => e.kind === "POINT" && e.nid === input.nid && e.date === today).flatMap((e) => e.projects),
-        );
-        projects = input.projects.filter((p) => !done.has(p));
-        input.projects.filter((p) => done.has(p)).forEach((p) => skipped.push(p));
-        if (!projects.length) return { ok: false, error: "هذه الحالة أُدخلت اليوم في هذا المشروع مسبقاً" };
-      }
-
-      let counters = db.counters;
-      let created: Entry[];
-      if (kind === "POINT") {
-        created = projects.map((p, i) => ({
-          id: uuid(), nid: input.nid, center, userId: user.id, kind, at: now, date: today, projects: [p], isNew: isNew && i === 0,
-          ...(input.queueRef ? { queueRef: input.queueRef } : {}),
-        }));
-      } else {
-        const base: Entry = { id: uuid(), nid: input.nid, center, userId: user.id, kind, at: now, date: today, projects, isNew };
-        const q = assignQueue(counters, base, projects);
-        counters = q.counters;
-        created = [{ ...base, queue: q.queue }];
-      }
-
-      setDb((d) => ({
-        ...d,
-        counters: { ...d.counters, ...counters },
-        beneficiaries: isNew ? { ...d.beneficiaries, [input.nid]: beneficiary } : d.beneficiaries,
-        entries: [...d.entries, ...created],
-      }));
-      return { ok: true, mode: "created", entry: created[0], isNew, skipped, added: kind === "RECEPTION" ? projects : [] };
+  const rpc = useCallback(
+    async <T,>(fn: string, args: Record<string, unknown>): Promise<{ data?: T; error?: string }> => {
+      if (!navigator.onLine) return { error: "لا يوجد اتصال بالإنترنت. انتظر عودة الاتصال ثم أعد المحاولة" };
+      const { data, error } = await sb.rpc(fn, args);
+      if (error) return { error: errorText(error) };
+      return { data: data as T };
     },
-    [db, user, center, log],
+    [sb],
   );
+
+  const addEntry = useCallback(
+    async (input: AddEntryInput): Promise<AddEntryResult> => {
+      const u = userRef.current;
+      const c = centerRef.current;
+      if (!u || !c) return { ok: false, error: "انتهت الجلسة، سجّل الدخول من جديد" };
+      const r = await rpc<{ mode: "created" | "updated"; entry_id: string; is_new: boolean; queue: Record<string, number>; skipped: string[] }>("add_entry", {
+        p_nid: input.nid,
+        p_center: c,
+        p_projects: input.projects,
+        p_name: input.name?.trim() || null,
+        p_type: input.type ?? null,
+        p_queue_ref: input.queueRef ?? null,
+      });
+      if (r.error || !r.data) return { ok: false, error: r.error ?? "تعذّر الإدخال" };
+      const res = r.data;
+      await Promise.all([refreshToday(), lookup(input.nid)]);
+      const order = projectOrder();
+      const projects =
+        u.role === "POINT"
+          ? input.projects.filter((p) => !res.skipped.includes(p))
+          : Object.keys(res.queue).sort((a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99));
+      const now = new Date().toISOString();
+      const entry: Entry = {
+        id: res.entry_id,
+        nid: input.nid,
+        center: c,
+        userId: u.id,
+        kind: u.role === "POINT" ? "POINT" : "RECEPTION",
+        at: now,
+        date: dateKey(now),
+        projects,
+        isNew: res.is_new,
+        ...(u.role === "POINT" ? {} : { queue: res.queue }),
+      };
+      return { ok: true, mode: res.mode, entry, isNew: res.is_new, skipped: res.skipped ?? [], added: projects };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rpc, refreshToday, lookup],
+  );
+
+  /** بعد تعديل إدخال: تحديث اليوم وسجل الهوية */
+  const after = useCallback(
+    async (nids: string[]) => {
+      await Promise.all([refreshToday(), ...nids.map((n) => lookup(n))]);
+    },
+    [refreshToday, lookup],
+  );
+  const nidOf = (entryId: string) => dbRef.current.entries.find((e) => e.id === entryId)?.nid;
 
   const updateBeneficiary = useCallback(
-    (nid: string, data: { name: string; type?: IdType }) => {
-      const name = data.name.trim().replace(/\s+/g, " ");
-      if (!name) return "اكتب الاسم — الاسم الأول يكفي";
-      setDb((d) => {
-        const b = d.beneficiaries[nid];
-        if (!b) return d;
-        return log(
-          { ...d, beneficiaries: { ...d.beneficiaries, [nid]: { ...b, name, type: data.type ?? b.type } } },
-          "تعديل بيانات هوية",
-          `${nid}: "${b.name || "—"}" ← "${name}"${data.type && data.type !== b.type ? " (تغيير النوع)" : ""}`,
-        );
-      });
+    async (nid: string, data: { name: string; type?: IdType }) => {
+      const r = await rpc("update_beneficiary", { p_nid: nid, p_name: data.name, p_type: data.type ?? null });
+      if (r.error) return r.error;
+      await lookup(nid);
       return null;
     },
-    [log],
-  );
-
-  const renameBeneficiary = useCallback(
-    (nid: string, name: string) => {
-      setDb((d) => {
-        const b = d.beneficiaries[nid];
-        if (!b) return d;
-        return log({ ...d, beneficiaries: { ...d.beneficiaries, [nid]: { ...b, name: name.trim() } } }, "تعديل اسم", `${nid}: "${b.name || "—"}" ← "${name.trim() || "—"}"`);
-      });
-    },
-    [log],
+    [rpc, lookup],
   );
 
   const updateEntryProjects = useCallback(
-    (entryId: string, projects: string[]) => {
+    async (entryId: string, projects: string[]) => {
       if (!projects.length) return "اختر مشروعاً واحداً على الأقل";
-      const e = db.entries.find((x) => x.id === entryId);
-      if (!e) return "الإدخال غير موجود";
-      if (e.kind === "POINT") {
-        const clash = db.entries.some((x) => x.id !== e.id && x.kind === "POINT" && x.nid === e.nid && x.date === e.date && x.projects.some((p) => projects.includes(p)));
-        if (clash) return "هذا المشروع مُدخل لنفس الحالة في نفس اليوم";
-      }
-      const q = e.kind === "RECEPTION" ? assignQueue(db.counters, e, projects) : null;
-      setDb((d) =>
-        log(
-          {
-            ...d,
-            counters: q ? { ...d.counters, ...q.counters } : d.counters,
-            entries: d.entries.map((x) => (x.id === entryId ? { ...x, projects, ...(q ? { queue: q.queue } : {}) } : x)),
-          },
-          "تعديل مشاريع إدخال",
-          `${e.nid} (${e.date}): ${e.projects.join("، ")} ← ${projects.join("، ")}`,
-        ),
-      );
+      const nid = nidOf(entryId);
+      const r = await rpc("update_entry_projects", { p_entry: entryId, p_projects: projects });
+      if (r.error) return r.error;
+      await after(nid ? [nid] : []);
       return null;
     },
-    [db, log],
+    [rpc, after],
   );
 
   const deleteEntry = useCallback(
-    (entryId: string) => {
-      setDb((d) => {
-        const e = d.entries.find((x) => x.id === entryId);
-        if (!e) return d;
-        const entries = d.entries.filter((x) => x.id !== entryId);
-        const beneficiaries = { ...d.beneficiaries };
-        if (!entries.some((x) => x.nid === e.nid)) delete beneficiaries[e.nid];
-        return log({ ...d, entries, beneficiaries }, "حذف إدخال", `${e.nid} (${e.date}) ${e.projects.join("، ")}`);
-      });
-    },
-    [log],
-  );
-
-  /** موظف النقطة يصحح توجيه الاستقبال لليوم، ويحذف إدخال خدمته الخاطئ إن وُجد */
-  const correctRouting = useCallback(
-    (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => {
-      if (!projects.length) return "اختر المشروع الصحيح";
-      const e = db.entries.find((x) => x.id === receptionEntryId && x.kind === "RECEPTION");
-      if (!e) return "لا يوجد توجيه استقبال لهذه الحالة اليوم";
-      const from = e.corrected?.from ?? e.projects;
-      // المشروع الجديد يعطي الرقم التالي، ورقم المشروع القديم يُلغى ولا يُعاد استخدامه
-      const q = assignQueue(db.counters, e, projects);
-      const queueOut = { ...e.queueOut };
-      e.projects.filter((p) => !projects.includes(p) && e.queue?.[p]).forEach((p) => (queueOut[p] = e.queue![p]));
-      projects.forEach((p) => delete queueOut[p]);
-      setDb((d) =>
-        log(
-          {
-            ...d,
-            counters: { ...d.counters, ...q.counters },
-            entries: d.entries
-              .filter((x) => !deleteEntryIds.includes(x.id))
-              .map((x) =>
-                x.id === receptionEntryId
-                  ? { ...x, projects, queue: q.queue, queueOut, corrected: { by: user?.id ?? "", at: new Date().toISOString(), from } }
-                  : x,
-              ),
-          },
-          "تصحيح توجيه",
-          `${e.nid}: ${e.projects.join("، ")} ← ${projects.join("، ")}${deleteEntryIds.length ? " (مع حذف إدخال الخدمة الخاطئ)" : ""}`,
-        ),
-      );
+    async (entryId: string) => {
+      const nid = nidOf(entryId);
+      const r = await rpc("delete_entry", { p_entry: entryId });
+      if (r.error) return r.error;
+      setDb((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== entryId) }));
+      await after(nid ? [nid] : []);
       return null;
     },
-    [db, user, log],
+    [rpc, after],
+  );
+
+  const correctRouting = useCallback(
+    async (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => {
+      if (!projects.length) return "اختر المشروع الصحيح";
+      const nid = nidOf(receptionEntryId);
+      const r = await rpc("correct_routing", { p_reception: receptionEntryId, p_projects: projects, p_delete: deleteEntryIds });
+      if (r.error) return r.error;
+      if (deleteEntryIds.length) setDb((d) => ({ ...d, entries: d.entries.filter((e) => !deleteEntryIds.includes(e.id)) }));
+      await after(nid ? [nid] : []);
+      return null;
+    },
+    [rpc, after],
   );
 
   const moveEntry = useCallback(
-    (entryId: string, newNid: string) => {
-      const e = db.entries.find((x) => x.id === entryId);
-      if (!e) return "الإدخال غير موجود";
-      if (newNid === e.nid) return "الرقم الجديد مطابق للحالي";
-      const target = db.entries.filter((x) => x.nid === newNid && x.date === e.date);
-      if (e.kind === "RECEPTION" && target.some((x) => x.kind === "RECEPTION" && x.center === e.center))
-        return "الرقم الصحيح له إدخال استقبال اليوم في نفس المركز. عدّل ذلك الإدخال بدلاً من النقل";
-      if (e.kind === "POINT" && target.some((x) => x.kind === "POINT" && x.projects.some((p) => e.projects.includes(p))))
-        return "الرقم الصحيح مُدخل اليوم في نفس المشروع";
-      setDb((d) => {
-        const old = d.beneficiaries[e.nid];
-        const entries = d.entries.map((x) => (x.id === entryId ? { ...x, nid: newNid } : x));
-        const beneficiaries = { ...d.beneficiaries };
-        if (!beneficiaries[newNid]) beneficiaries[newNid] = { nid: newNid, name: old?.name ?? "", createdAt: e.at };
-        if (!entries.some((x) => x.nid === e.nid)) delete beneficiaries[e.nid];
-        return log({ ...d, entries, beneficiaries }, "تصحيح رقم هوية", `${e.nid} ← ${newNid} (${e.date})`);
-      });
+    async (entryId: string, newNid: string) => {
+      const old = nidOf(entryId);
+      const r = await rpc("move_entry", { p_entry: entryId, p_new_nid: newNid });
+      if (r.error) return r.error;
+      await after([newNid, ...(old ? [old] : [])]);
       return null;
     },
-    [db, log],
+    [rpc, after],
   );
 
   /* ===== الإدارة ===== */
 
   const saveUser = useCallback(
-    (u: User) => {
-      if (db.users.some((x) => x.id !== u.id && x.username.toLowerCase() === u.username.toLowerCase()))
-        return "اسم المستخدم مستخدم لحساب آخر";
-      setDb((d) => {
-        const exists = d.users.some((x) => x.id === u.id);
-        return log(
-          { ...d, users: exists ? d.users.map((x) => (x.id === u.id ? u : x)) : [...d.users, u] },
-          exists ? "تعديل مستخدم" : "إنشاء مستخدم",
-          `${u.fullName} (${u.username})`,
-        );
+    async (u: User) => {
+      const r = await saveUserAction({
+        id: dbRef.current.users.some((x) => x.id === u.id) ? u.id : undefined,
+        username: u.username,
+        fullName: u.fullName,
+        role: u.role,
+        centers: u.centers,
+        projects: u.projects,
+        active: u.active,
+        password: u.password || undefined,
       });
+      if (!r.ok) return r.error;
+      await reloadRefs();
       return null;
     },
-    [db, log],
+    [reloadRefs],
   );
 
   const deleteUser = useCallback(
-    (id: string) => setDb((d) => {
-      const u = d.users.find((x) => x.id === id);
-      return log({ ...d, users: d.users.filter((x) => x.id !== id) }, "حذف مستخدم", u ? `${u.fullName} (${u.username})` : id);
-    }),
-    [log],
+    async (id: string) => {
+      const r = await deleteUserAction(id);
+      if (!r.ok) return r.error;
+      await reloadRefs();
+      return null;
+    },
+    [reloadRefs],
   );
 
   const saveProject = useCallback(
-    (p: Project) => {
+    async (p: Project) => {
       if (!p.name.trim()) return "اكتب اسم المشروع";
-      setDb((d) => {
-        const exists = d.projects.some((x) => x.code === p.code);
-        return log(
-          { ...d, projects: exists ? d.projects.map((x) => (x.code === p.code ? p : x)) : [...d.projects, { ...p, color: p.color ?? nextColor(d.projects) }] },
-          exists ? "تعديل مشروع" : "إضافة مشروع",
-          p.name,
-        );
-      });
+      const r = await rpc("save_project", { p_code: p.code, p_name: p.name, p_active: p.active, p_centers: p.centers, p_color: p.color ?? null });
+      if (r.error) return r.error;
+      await reloadRefs();
       return null;
     },
-    [log],
+    [rpc, reloadRefs],
   );
 
-  const moveProject = useCallback((code: string, dir: -1 | 1) => {
-    setDb((d) => {
-      const list = [...d.projects].sort((a, b) => a.order - b.order);
+  const moveProject = useCallback(
+    async (code: string, dir: -1 | 1) => {
+      const list = [...dbRef.current.projects].sort((a, b) => a.order - b.order);
       const i = list.findIndex((p) => p.code === code);
       const j = i + dir;
-      if (i < 0 || j < 0 || j >= list.length) return d;
+      if (i < 0 || j < 0 || j >= list.length) return;
       [list[i], list[j]] = [list[j], list[i]];
-      return { ...d, projects: list.map((p, k) => ({ ...p, order: k + 1 })) };
-    });
-  }, []);
-
-  const renameCenter = useCallback(
-    (code: CenterCode, name: string) =>
-      setDb((d) => log({ ...d, centers: d.centers.map((c) => (c.code === code ? { ...c, name: name.trim() || c.name } : c)) }, "تعديل مركز", name)),
-    [log],
+      // عرض فوري ثم حفظ
+      setDb((d) => ({ ...d, projects: list.map((p, k) => ({ ...p, order: k + 1 })) }));
+      await rpc("reorder_projects", { p_codes: list.map((p) => p.code) });
+      await reloadRefs();
+    },
+    [rpc, reloadRefs],
   );
 
-  const saveSettings = useCallback((s: Settings) => setDb((d) => log({ ...d, settings: s }, "تعديل الإعدادات", "")), [log]);
+  const renameCenter = useCallback(
+    async (code: CenterCode, name: string) => {
+      await rpc("rename_center", { p_code: code, p_name: name });
+      await reloadRefs();
+    },
+    [rpc, reloadRefs],
+  );
 
-  const resetDemo = useCallback(() => {
-    const fresh = seedDb();
-    setDb(fresh);
-    storageSet(DB_KEY, fresh);
-  }, []);
+  const saveSettings = useCallback(
+    async (s: Settings) => {
+      const r = await rpc("save_settings", { p_hint_reception: s.hintReception, p_hint_point: s.hintPoint, p_idle_minutes: s.idleMinutes });
+      if (r.error) return r.error;
+      await reloadRefs();
+      return null;
+    },
+    [rpc, reloadRefs],
+  );
+
+  const refresh = useCallback(async () => {
+    const u = userRef.current;
+    if (u) await loadAll(u, centerRef.current);
+  }, [loadAll]);
 
   const value = useMemo<Ctx>(
     () => ({
-      ready, online, db, center, user, setCenter, login, logout,
-      addEntry, renameBeneficiary, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry,
-      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo,
+      ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
+      addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry,
+      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings,
     }),
-    [ready, online, db, center, user, setCenter, login, logout, addEntry, renameBeneficiary, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, resetDemo],
+    [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

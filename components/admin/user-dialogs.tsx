@@ -87,6 +87,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
   const [showPass, setShowPass] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [created, setCreated] = useState<User | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -105,7 +106,8 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
   const projectOptions = allProjects(db).filter((p) => p.active || f.projects.includes(p.code));
   const editingSelf = isEdit && me?.id === f.id;
 
-  function submit() {
+  async function submit() {
+    if (busy) return;
     const er: Record<string, string> = {};
     if (!f.fullName.trim()) er.fullName = "اكتب اسم الموظف";
     if (!/^[a-z0-9._-]{3,30}$/.test(f.username)) er.username = "3 أحرف على الأقل: حروف إنجليزية صغيرة وأرقام و . _ - فقط";
@@ -122,8 +124,10 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
       centers: isStaff(f.role) ? f.centers : (["GAZA", "KHY"] as CenterCode[]),
       projects: f.role === "POINT" ? f.projects : [],
     };
-    const e = saveUser(final);
-    if (e) return setErrors({ username: e });
+    setBusy(true);
+    const e = await saveUser(final);
+    setBusy(false);
+    if (e) return setErrors({ form: e });
     if (isEdit) {
       toast("تم حفظ التعديلات");
       onClose();
@@ -282,6 +286,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
             </Button>
           </div>
           <FieldError>{errors.password}</FieldError>
+          <FieldError>{errors.form}</FieldError>
         </div>
 
         {isStaff(f.role) && (
@@ -340,8 +345,12 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
 export function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
   const { saveUser } = useStore();
   const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
   useEffect(() => {
-    if (user) setPass("");
+    if (user) {
+      setPass("");
+      setErr("");
+    }
   }, [user]);
 
   return (
@@ -360,9 +369,10 @@ export function ResetPasswordDialog({ user, onClose }: { user: User | null; onCl
             </Button>
             <Button
               size="lg"
-              onClick={() => {
+              onClick={async () => {
                 const p = generatePassword();
-                saveUser({ ...user!, password: p });
+                const e = await saveUser({ ...user!, password: p });
+                if (e) return setErr(e);
                 setPass(p);
               }}
             >
@@ -379,7 +389,10 @@ export function ResetPasswordDialog({ user, onClose }: { user: User | null; onCl
           <CopyField value={pass} />
         </div>
       ) : (
-        <p className="text-sm text-muted">ستتوقف كلمة المرور الحالية فوراً، ويحتاج الموظف الكلمة الجديدة لتسجيل الدخول.</p>
+        <>
+          <p className="text-sm text-muted">ستتوقف كلمة المرور الحالية فوراً، ويحتاج الموظف الكلمة الجديدة لتسجيل الدخول.</p>
+          <FieldError>{err}</FieldError>
+        </>
       )}
     </Dialog>
   );
@@ -390,6 +403,7 @@ export function ResetPasswordDialog({ user, onClose }: { user: User | null; onCl
 export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
   const { db, deleteUser, saveUser, user: me } = useStore();
   const toast = useToast();
+  const [err, setErr] = useState("");
   if (!user) return null;
   const count = db.entries.filter((e) => e.userId === user.id).length;
   const isSelf = me?.id === user.id;
@@ -411,8 +425,9 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
             <Button
               variant="secondary"
               size="lg"
-              onClick={() => {
-                saveUser({ ...user, active: false });
+              onClick={async () => {
+                const e = await saveUser({ ...user, active: false });
+                if (e) return setErr(e);
                 toast("تم إيقاف الحساب");
                 onClose();
               }}
@@ -420,12 +435,13 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
               إيقاف الحساب بدلاً من الحذف
             </Button>
           )}
-          {!blocked && (
+          {!blocked && count === 0 && (
             <Button
               variant="danger"
               size="lg"
-              onClick={() => {
-                deleteUser(user.id);
+              onClick={async () => {
+                const e = await deleteUser(user.id);
+                if (e) return setErr(e);
                 toast("تم حذف المستخدم", "info");
                 onClose();
               }}
@@ -446,11 +462,12 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
           {count > 0 ? (
             <p className="flex gap-2 rounded-xl bg-warn-soft px-4 py-3 font-semibold text-warn">
               <TriangleAlert className="size-5 shrink-0" />
-              لهذا المستخدم <span className="num">{count.toLocaleString("en-US")}</span> إدخال. الإدخالات تبقى محفوظة، لكن اسمه لن يظهر بجانبها. الأفضل إيقاف الحساب.
+              لهذا المستخدم <span className="num">{count.toLocaleString("en-US")}</span> إدخال، فلا يمكن حذفه حتى تبقى السجلات كاملة. أوقف الحساب بدلاً من الحذف.
             </p>
           ) : (
             <p className="text-muted">لا توجد إدخالات لهذا المستخدم.</p>
           )}
+          <FieldError>{err}</FieldError>
         </div>
       )}
     </Dialog>

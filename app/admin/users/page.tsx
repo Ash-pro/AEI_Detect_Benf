@@ -81,8 +81,9 @@ export default function UsersPage() {
     if (u.id === me?.id) return toast("لا يمكنك إيقاف حسابك أنت", "bad");
     if (u.role === "ADMIN" && u.active && db.users.filter((x) => x.role === "ADMIN" && x.active).length <= 1)
       return toast("لا يمكن إيقاف آخر حساب أدمن مفعّل", "bad");
-    saveUser({ ...u, active: !u.active });
-    toast(u.active ? `تم إيقاف حساب ${u.fullName}` : `تم تفعيل حساب ${u.fullName}`);
+    void saveUser({ ...u, active: !u.active }).then((e) =>
+      toast(e ?? (u.active ? `تم إيقاف حساب ${u.fullName}` : `تم تفعيل حساب ${u.fullName}`), e ? "bad" : "ok"),
+    );
   }
 
   const openEdit = (u: User) => {

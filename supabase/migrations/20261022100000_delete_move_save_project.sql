@@ -1,5 +1,3 @@
--- بانتظار الموافقة على التطبيق في Supabase
-
 create or replace function public.delete_entry(p_entry uuid)
 returns void
 language plpgsql

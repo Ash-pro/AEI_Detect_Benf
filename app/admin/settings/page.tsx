@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History, RotateCcw } from "lucide-react";
+import { History } from "lucide-react";
 import { PageHead } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,9 @@ import { dayNum, dateKey, formatTime } from "@/lib/utils";
 
 /** الشاشة 11 — الإعدادات */
 export default function SettingsPage() {
-  const { db, saveSettings, resetDemo } = useStore();
+  const { db, saveSettings } = useStore();
   const toast = useToast();
   const [s, setS] = useState<Settings>(db.settings);
-  const [confirmReset, setConfirmReset] = useState(false);
   useEffect(() => setS(db.settings), [db.settings]);
   const dirty = JSON.stringify(s) !== JSON.stringify(db.settings);
 
@@ -29,9 +28,9 @@ export default function SettingsPage() {
           <Button
             size="lg"
             disabled={!dirty}
-            onClick={() => {
-              saveSettings({ ...s, idleMinutes: Math.min(Math.max(Number(s.idleMinutes) || 30, 5), 240) });
-              toast("تم حفظ الإعدادات");
+            onClick={async () => {
+              const e = await saveSettings({ ...s, idleMinutes: Math.min(Math.max(Number(s.idleMinutes) || 30, 5), 240) });
+              toast(e ?? "تم حفظ الإعدادات", e ? "bad" : "ok");
             }}
           >
             حفظ الإعدادات
@@ -85,34 +84,6 @@ export default function SettingsPage() {
           )}
         </Card>
 
-        <Card className="flex flex-wrap items-center justify-between gap-4 border-dashed p-5 lg:col-span-2">
-          <div>
-            <h2 className="font-bold">البيانات التجريبية</h2>
-            <p className="text-sm text-muted">إرجاع كل المستخدمين والمشاريع والإدخالات إلى بيانات العرض الأصلية. خاص بنسخة التصميم.</p>
-          </div>
-          {confirmReset ? (
-            <div className="flex gap-2">
-              <Button
-                variant="danger"
-                onClick={() => {
-                  resetDemo();
-                  setConfirmReset(false);
-                  toast("تمت إعادة البيانات التجريبية");
-                }}
-              >
-                تأكيد الإعادة
-              </Button>
-              <Button variant="ghost" onClick={() => setConfirmReset(false)}>
-                إلغاء
-              </Button>
-            </div>
-          ) : (
-            <Button variant="secondary" onClick={() => setConfirmReset(true)}>
-              <RotateCcw className="size-4" />
-              إعادة البيانات التجريبية
-            </Button>
-          )}
-        </Card>
       </div>
     </>
   );
