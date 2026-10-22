@@ -105,3 +105,12 @@ export function queueText(e: Entry): string {
     .filter(Boolean)
     .join(" · ");
 }
+
+/** رقم الدور الذي خُدم عليه إدخال النقطة، والاستقبال المرتبط به */
+export function pointQueue(db: Db, e: Entry): { number?: number; reception?: Entry } {
+  const p = e.projects[0];
+  const rec = e.queueRef
+    ? db.entries.find((x) => x.id === e.queueRef)
+    : db.entries.find((x) => x.kind === "RECEPTION" && x.date === e.date && x.center === e.center && x.nid === e.nid && x.queue?.[p]);
+  return { number: rec?.queue?.[p], reception: rec };
+}

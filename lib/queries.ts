@@ -79,13 +79,13 @@ export function staffStats(db: Db, user: SessionUser, center: CenterCode, date =
       typeCount.set(l, (typeCount.get(l) ?? 0) + 1);
     });
   const recToday = db.entries.filter((e) => e.kind === "RECEPTION" && e.date === date && e.center === center);
-  const fromQueue = mine.filter(
-    (e) => e.queueRef || recToday.some((r) => r.nid === e.nid && e.projects.some((p) => r.queue?.[p])),
-  ).length;
+  const queued = mine.filter((e) => e.queueRef || recToday.some((r) => r.nid === e.nid && e.projects.some((p) => r.queue?.[p])));
+  // النقطة: بالحالات (الهويات) حتى يتطابق المجموع مع عدد الحالات المخدومة
+  const fromQueue = user.role === "POINT" ? new Set(queued.map((e) => e.nid)).size : queued.length;
   return {
     types: ["أم", "أب", "طفل", "غير محدد"].filter((l) => typeCount.has(l)).map((l) => ({ label: l, count: typeCount.get(l)! })),
     fromQueue,
-    noQueue: mine.length - fromQueue,
+    noQueue: Math.max(0, (user.role === "POINT" ? new Set(mine.map((e) => e.nid)).size : mine.length) - fromQueue),
     corrected: recToday.filter((e) => e.corrected?.by === user.id).length,
     total: cases,
     isNew: mine.filter((e) => e.isNew).length,

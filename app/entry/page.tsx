@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleAlert, FlaskConical, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
+import { CalendarDays, CircleAlert, FlaskConical, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
 import { AppGate } from "@/components/shell/app-gate";
 import { StaffHeader } from "@/components/shell/app-header";
 import { IdInput } from "@/components/entry/id-input";
@@ -12,6 +12,7 @@ import { RoutingDialog, RoutingPanel } from "@/components/entry/routing";
 import { StatsStrip } from "@/components/entry/stats-strip";
 import { IdFields, IdTypeTag } from "@/components/entry/id-fields";
 import { QueueList } from "@/components/entry/queue-list";
+import { DayLog } from "@/components/entry/day-log";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckBox } from "@/components/ui/check";
@@ -24,6 +25,7 @@ import {
   projectName,
   staffShareText,
   staffStats,
+  type StaffStats,
   visibleHistory,
 } from "@/lib/queries";
 import { freshValidId } from "@/lib/mock-data";
@@ -55,7 +57,8 @@ function EntryScreen() {
   const [idType, setIdType] = useState<IdType>();
   const [showErr, setShowErr] = useState(false);
   // موظف النقطة: إدخال هوية أو قائمة الانتظار
-  const [view, setView] = useState<"entry" | "queue">("entry");
+  const [view, setView] = useState<View>("entry");
+  const [shareDay, setShareDay] = useState<{ date: string; stats: StaffStats } | null>(null);
   const [queueRef, setQueueRef] = useState<QueueItem | null>(null);
   // الاستقبال: آخر إدخال مع أرقام الدور لتبليغ المستفيد
   const [lastDone, setLastDone] = useState<{ nid: string; name: string; type?: IdType; projects: string[]; queue: Record<string, number>; updated: boolean } | null>(null);
@@ -212,10 +215,28 @@ function EntryScreen() {
   const allDone = isPoint && u.projects.length > 0 && u.projects.every((p) => pointDoneToday.has(p));
 
   return (
-    <main className="mx-auto max-w-3xl space-y-4 px-4 pb-24 pt-5">
-      {isPoint && <ViewTabs view={view} onChange={setView} waiting={waiting} />}
+    <main className={cn("mx-auto space-y-4 px-4 pb-24 pt-5", view === "log" ? "max-w-5xl" : "max-w-3xl")}>
+      <ViewTabs view={view} onChange={setView} waiting={waiting} isPoint={isPoint} />
 
-      {isPoint && view === "queue" ? (
+      {view === "log" ? (
+        <DayLog
+          db={db}
+          user={u}
+          center={c}
+          onOpen={(id) => {
+            setQueueRef(null);
+            setView("entry");
+            setRaw(id);
+            setError(undefined);
+            open(id, null);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          onShare={(date, st) => {
+            setShareDay({ date, stats: st });
+            setShareOpen(true);
+          }}
+        />
+      ) : isPoint && view === "queue" ? (
         <QueueList db={db} user={u} center={c} onPick={pick} />
       ) : (
       <>
@@ -224,7 +245,7 @@ function EntryScreen() {
         <p>{hint}</p>
       </div>
 
-      <StatsStrip stats={stats} isPoint={isPoint} waiting={isPoint ? waiting : undefined} onShare={() => setShareOpen(true)} />
+      <StatsStrip stats={stats} isPoint={isPoint} waiting={isPoint ? waiting : undefined} onShare={() => { setShareDay(null); setShareOpen(true); }} />
 
       {lastDone && !nid && <QueueTicket db={db} done={lastDone} onClose={() => setLastDone(null)} />}
 
@@ -363,21 +384,28 @@ function EntryScreen() {
       <ShareDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        title="مشاركة إحصائيات اليوم"
-        text={staffShareText(db, u, c, stats)}
+        title={shareDay && shareDay.date !== today ? "مشاركة إحصائيات اليوم المختار" : "مشاركة إحصائيات اليوم"}
+        text={shareDay ? staffShareText(db, u, c, shareDay.stats, shareDay.date) : staffShareText(db, u, c, stats)}
       />
     </main>
   );
 }
 
-/** تبويبا موظف النقطة: إدخال هوية / قائمة الانتظار */
-function ViewTabs({ view, onChange, waiting }: { view: "entry" | "queue"; onChange: (v: "entry" | "queue") => void; waiting: number }) {
+type View = "entry" | "queue" | "log";
+
+/** تبويبات الموظف: إدخال هوية / قائمة الانتظار (النقطة) / سجل الإدخالات */
+function ViewTabs({ view, onChange, waiting, isPoint }: { view: View; onChange: (v: View) => void; waiting: number; isPoint: boolean }) {
   const tabs = [
-    { value: "entry" as const, label: "إدخال هوية", icon: Keyboard },
-    { value: "queue" as const, label: "قائمة الانتظار", icon: ListOrdered },
+    { value: "entry" as const, label: "إدخال هوية", short: "إدخال", icon: Keyboard },
+    ...(isPoint ? [{ value: "queue" as const, label: "قائمة الانتظار", short: "الانتظار", icon: ListOrdered }] : []),
+    { value: "log" as const, label: "سجل الإدخالات", short: "السجل", icon: CalendarDays },
   ];
   return (
-    <div role="tablist" aria-label="طريقة العمل" className="grid grid-cols-2 gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card">
+    <div
+      role="tablist"
+      aria-label="طريقة العمل"
+      className={cn("mx-auto grid max-w-3xl gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card", isPoint ? "grid-cols-3" : "grid-cols-2")}
+    >
       {tabs.map((t) => (
         <button
           key={t.value}
@@ -385,12 +413,13 @@ function ViewTabs({ view, onChange, waiting }: { view: "entry" | "queue"; onChan
           aria-selected={view === t.value}
           onClick={() => onChange(t.value)}
           className={cn(
-            "focus-ring flex h-12 items-center justify-center gap-2 rounded-xl text-[15px] font-bold transition",
+            "focus-ring flex h-12 items-center justify-center gap-1.5 rounded-xl px-1 text-[15px] font-bold transition sm:gap-2",
             view === t.value ? "bg-brand text-brand-ink shadow-card" : "text-muted hover:bg-sunken hover:text-ink",
           )}
         >
-          <t.icon className="size-5" />
-          {t.label}
+          <t.icon className="size-5 shrink-0" />
+          <span className={isPoint ? "hidden sm:inline" : ""}>{t.label}</span>
+          {isPoint && <span className="sm:hidden">{t.short}</span>}
           {t.value === "queue" && (
             <span
               className={cn(
