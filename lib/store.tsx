@@ -265,8 +265,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (username: string, password: string) => {
       const { data, error } = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
       if (error || !data.user) {
-        if (/fetch|network/i.test(error?.message ?? "")) return { error: "تعذّر الاتصال بالخادم. تأكد من الإنترنت" };
-        return { error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
+        const m = error?.message ?? "";
+        if (/fetch|network/i.test(m)) return { error: "تعذّر الاتصال بالخادم. تأكد من الإنترنت" };
+        if (error?.code === "invalid_credentials" || /invalid login credentials/i.test(m)) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
+        if (error?.code === "email_provider_disabled") return { error: "تسجيل الدخول متوقف من إعدادات Supabase (Email provider)" };
+        return { error: `تعذّر تسجيل الدخول: ${m}` };
       }
       const profile = await loadProfile(sb, data.user.id);
       if (!profile) {
