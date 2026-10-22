@@ -13,8 +13,55 @@ import { useToast } from "@/components/ui/toast";
 import { CENTER_STYLE } from "@/components/shell/center-theme";
 import { useStore } from "@/lib/store";
 import { allProjects } from "@/lib/queries";
+import { PALETTE, projectColor } from "@/lib/project-colors";
 import type { CenterCode, Project } from "@/lib/types";
 import { cn, todayKey } from "@/lib/utils";
+
+/** لون الدور المميز للمشروع */
+function ColorPicker({ color, name, onPick }: { color: string; name: string; onPick: (c: string) => void }) {
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const open = Boolean(pos);
+  const setOpen = (v: boolean) => !v && setPos(null);
+  return (
+    <div className="relative shrink-0">
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />}
+      <button
+        onClick={(e) => {
+          if (open) return setOpen(false);
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+        }}
+        aria-label={`لون دور ${name}`}
+        aria-expanded={open}
+        title="لون الدور"
+        className="focus-ring grid size-8 place-items-center rounded-lg border border-line bg-surface"
+      >
+        <span className="size-5 rounded-md" style={{ background: color }} />
+      </button>
+      {open && (
+        <div className="fixed z-50 w-[188px] rounded-xl border border-line bg-surface p-2 shadow-pop" style={{ top: pos!.top, right: pos!.right }}>
+          <div className="mb-1.5 px-1 text-xs font-semibold text-muted">لون الدور</div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {PALETTE.map((c) => (
+              <button
+                key={c}
+                onClick={() => {
+                  onPick(c);
+                  setOpen(false);
+                }}
+                aria-label={c}
+                className={cn("grid size-8 place-items-center rounded-lg", c === color && "ring-2 ring-ink ring-offset-2")}
+                style={{ background: c }}
+              >
+                {c === color && <Check className="size-4 text-white" strokeWidth={3} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** الشاشة 9 — المشاريع والمراكز */
 export default function ProjectsPage() {
@@ -39,7 +86,7 @@ export default function ProjectsPage() {
     <>
       <PageHead
         title="المشاريع والمراكز"
-        sub="ترتيب المشاريع هنا هو ترتيبها في مربعات الاختيار عند الموظفين"
+        sub="ترتيب المشاريع هنا هو ترتيبها في مربعات الاختيار عند الموظفين. لون كل مشروع يميّز أرقام دوره في كل الشاشات"
         actions={
           <Button size="lg" onClick={() => setAdding(true)}>
             <Plus className="size-5" />
@@ -53,6 +100,7 @@ export default function ProjectsPage() {
         {list.map((p, i) => (
           <Card key={p.code} className={cn("p-4", !p.active && "bg-sunken/40")}>
             <div className="flex items-start gap-2">
+              <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => (saveProject({ ...p, color }), toast(`تم تغيير لون ${p.name}`))} />
               <div className="min-w-0 flex-1">
                 <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
                 <code className="mt-0.5 block px-2 text-start text-[11px] text-muted">{p.code}</code>
@@ -143,8 +191,13 @@ export default function ProjectsPage() {
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
-                    <code className="mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
+                    <div className="flex items-center gap-2">
+                      <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => (saveProject({ ...p, color }), toast(`تم تغيير لون ${p.name}`))} />
+                      <div className="min-w-0 flex-1">
+                        <NameCell project={p} onSave={(name) => (saveProject({ ...p, name }), toast("تم حفظ اسم المشروع"))} />
+                        <code className="mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
+                      </div>
+                    </div>
                   </td>
                   {db.centers.map((c) => (
                     <td key={c.code} className="px-3 py-2.5 text-center">

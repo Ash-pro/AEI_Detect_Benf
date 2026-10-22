@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Beneficiary, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
 import { assignQueue } from "./queue";
+import { nextColor, withColors } from "./project-colors";
 import { DB_VERSION, seedDb } from "./mock-data";
 import { dateKey, storageGet, storageSet, todayKey, uuid } from "./utils";
 import { isStaff } from "./roles";
@@ -91,6 +92,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const fresh = seedDb();
       initial = { ...fresh, users: stored.users, projects: stored.projects, centers: stored.centers, settings: stored.settings, changes: stored.changes };
     } else initial = stored;
+    initial = { ...initial, projects: withColors(initial.projects) };
     setDb(initial);
     setCenterState(storageGet<CenterCode | null>(CENTER_KEY, null));
     const u = storageGet<SessionUser | null>(USER_KEY, null);
@@ -395,7 +397,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setDb((d) => {
         const exists = d.projects.some((x) => x.code === p.code);
         return log(
-          { ...d, projects: exists ? d.projects.map((x) => (x.code === p.code ? p : x)) : [...d.projects, p] },
+          { ...d, projects: exists ? d.projects.map((x) => (x.code === p.code ? p : x)) : [...d.projects, { ...p, color: p.color ?? nextColor(d.projects) }] },
           exists ? "تعديل مشروع" : "إضافة مشروع",
           p.name,
         );

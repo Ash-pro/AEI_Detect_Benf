@@ -5,6 +5,7 @@ import { ArrowLeftRight, CheckCircle2, ChevronLeft, Clock, ListOrdered, PenLine 
 import { IdTypeTag } from "./id-fields";
 import { Card } from "@/components/ui/card";
 import { projectName } from "@/lib/queries";
+import { projectColor } from "@/lib/project-colors";
 import { projectQueue, type QueueItem } from "@/lib/queue";
 import type { CenterCode, Db, SessionUser } from "@/lib/types";
 import { cn, formatTime, minutesText } from "@/lib/utils";
@@ -139,11 +140,12 @@ function Row({ item, db, now, showProject, onPick }: { item: QueueItem; db: Db; 
         <span
           className={cn(
             "num grid size-12 shrink-0 place-items-center rounded-2xl text-xl font-bold",
-            item.status === "wait" && "bg-brand text-brand-ink",
+            item.status === "wait" && "text-white",
             item.status === "served" && "bg-ok-soft text-ok",
             item.status === "moved" && "bg-sunken text-muted line-through",
           )}
-          title="رقم الدور"
+          style={item.status === "wait" ? { background: projectColor(db, item.project) } : undefined}
+          title={`رقم الدور في ${projectName(db, item.project)}`}
         >
           {item.number}
         </span>

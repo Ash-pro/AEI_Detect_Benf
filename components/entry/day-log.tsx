@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { activeProjects, projectName, staffStats, type StaffStats } from "@/lib/queries";
 import { lastNumber, pointQueue } from "@/lib/queue";
+import { projectColor, projectSoft } from "@/lib/project-colors";
 import type { CenterCode, Db, Entry, SessionUser } from "@/lib/types";
 import { addDays, casesText, cn, dayFull, dayNum, formatTime, monthKey, monthLabel, normalizeArabicName, normalizeDigits, todayKey, weekday } from "@/lib/utils";
 
@@ -243,10 +244,12 @@ export function DayLog({
                   key={p || "all"}
                   onClick={() => setProject(p)}
                   className={cn(
-                    "rounded-lg border px-2.5 py-1 text-xs font-bold",
+                    "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-bold",
                     project === p ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface text-muted hover:text-ink",
                   )}
+                  style={p && project === p ? { borderColor: projectColor(db, p), background: projectSoft(projectColor(db, p)), color: projectColor(db, p) } : undefined}
                 >
+                  {p && <span className="size-2 rounded-full" style={{ background: projectColor(db, p) }} aria-hidden />}
                   {p ? projectName(db, p) : "كل المشاريع"}
                   {p && <span className="num font-semibold opacity-70"> {counts.get(p)}</span>}
                 </button>
@@ -259,8 +262,12 @@ export function DayLog({
           <div>
             {groups.map((g) => (
               <section key={g.code} aria-label={`دور ${projectName(db, g.code)}`}>
-                <div className="flex items-center justify-between gap-2 border-y border-line bg-sunken px-4 py-2 sm:px-5">
-                  <span className="font-bold">
+                <div
+                  className="flex items-center justify-between gap-2 border-y border-s-[6px] border-line px-4 py-2 sm:px-5"
+                  style={{ background: projectSoft(projectColor(db, g.code)), borderInlineStartColor: projectColor(db, g.code) }}
+                >
+                  <span className="flex items-center gap-2 font-bold" style={{ color: projectColor(db, g.code) }}>
+                    <span className="size-3 rounded-full" style={{ background: projectColor(db, g.code) }} aria-hidden />
                     دور {projectName(db, g.code)}
                   </span>
                   <span className="text-xs font-semibold text-muted">
@@ -364,8 +371,9 @@ function QueueLogRow({
         <span
           className={cn(
             "flex w-16 shrink-0 flex-col items-center justify-center rounded-xl py-1.5 leading-none",
-            number ? "bg-brand text-brand-ink" : "bg-sunken text-muted",
+            number ? "text-white" : "bg-sunken text-muted",
           )}
+          style={number ? { background: projectColor(db, project) } : undefined}
           title="رقم الدور في المشروع"
         >
           <span className="num text-xl font-bold">{number ?? "—"}</span>

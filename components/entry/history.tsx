@@ -3,6 +3,7 @@
 import { PenLine, Store, Stethoscope } from "lucide-react";
 import type { Db, Entry } from "@/lib/types";
 import { centerName, projectName, userName } from "@/lib/queries";
+import { projectColor } from "@/lib/project-colors";
 import { cn, dayFull, formatTime } from "@/lib/utils";
 
 export function KindTag({ kind }: { kind: Entry["kind"] }) {
@@ -28,9 +29,10 @@ export function ProjectChip({ db, code, number, tone = "sunken" }: { db: Db; cod
         tone === "surface" ? "bg-surface shadow-sm" : "bg-sunken",
       )}
     >
+      <span className="size-2 shrink-0 rounded-full" style={{ background: projectColor(db, code) }} aria-hidden />
       {projectName(db, code)}
       {number ? (
-        <span className="num rounded bg-brand px-1 text-[11px] leading-4 text-brand-ink" title="رقم الدور">
+        <span className="num rounded px-1 text-[11px] leading-4 text-white" style={{ background: projectColor(db, code) }} title="رقم الدور">
           {number}
         </span>
       ) : null}

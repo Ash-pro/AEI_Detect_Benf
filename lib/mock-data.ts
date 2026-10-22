@@ -1,5 +1,6 @@
 import type { Beneficiary, Center, CenterCode, Db, Entry, IdType, Project, Settings, User } from "./types";
 import { assignQueue } from "./queue";
+import { withColors } from "./project-colors";
 import { addDays, isValidNationalId, todayKey } from "./utils";
 
 /* بيانات تجريبية للعرض والاختبار فقط — تُستبدل بـ Supabase لاحقاً */
@@ -274,7 +275,7 @@ export function seedDb(): Db {
     version: DB_VERSION,
     seededOn: today,
     centers: CENTERS,
-    projects: SEED_PROJECTS,
+    projects: withColors(SEED_PROJECTS),
     users,
     beneficiaries,
     entries,

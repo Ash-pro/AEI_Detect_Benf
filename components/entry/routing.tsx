@@ -8,6 +8,7 @@ import { CheckBox } from "@/components/ui/check";
 import { FieldError } from "@/components/ui/field";
 import { useStore } from "@/lib/store";
 import { centerName, projectName, userName } from "@/lib/queries";
+import { projectColor } from "@/lib/project-colors";
 import type { Entry, Project, SessionUser } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
 
@@ -59,7 +60,10 @@ export function RoutingPanel({
                 reception.queue?.[p] ? (
                   <span key={p} className="inline-flex items-center gap-1.5 rounded-lg bg-surface px-2.5 py-0.5 text-base text-ink shadow-sm">
                     {forMe.length > 1 && <span className="text-sm text-muted">{projectName(db, p)}</span>}
-                    الدور <span className="num text-xl text-ok">{reception.queue[p]}</span>
+                    الدور{" "}
+                    <span className="num rounded-md px-2 text-xl text-white" style={{ background: projectColor(db, p) }}>
+                      {reception.queue[p]}
+                    </span>
                   </span>
                 ) : null,
               )}

@@ -14,6 +14,8 @@ export interface Project {
   active: boolean;
   order: number;
   centers: CenterCode[];
+  /** لون الدور المميز للمشروع */
+  color?: string;
 }
 
 export interface User {

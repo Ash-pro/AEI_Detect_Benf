@@ -30,6 +30,7 @@ import {
 } from "@/lib/queries";
 import { freshValidId } from "@/lib/mock-data";
 import { idTypeLabel, type QueueItem, waitingCount } from "@/lib/queue";
+import { projectColor, projectSoft } from "@/lib/project-colors";
 import type { IdType } from "@/lib/types";
 import { cn, formatTime, normalizeDigits, todayKey } from "@/lib/utils";
 
@@ -464,10 +465,10 @@ function QueueTicket({
       </div>
       <div className="flex flex-wrap gap-2 px-4 pb-4">
         {done.projects.map((p) => (
-          <div key={p} className="flex items-center gap-3 rounded-xl bg-surface px-3.5 py-2 shadow-sm">
-            <span className="text-sm font-bold">{projectName(db, p)}</span>
+          <div key={p} className="flex items-center gap-3 rounded-xl border-s-[6px] bg-surface px-3.5 py-2 shadow-sm" style={{ borderInlineStartColor: projectColor(db, p) }}>
+            <span className="text-sm font-bold" style={{ color: projectColor(db, p) }}>{projectName(db, p)}</span>
             <span className="text-xs text-muted">الدور</span>
-            <span className="num text-2xl font-bold leading-none text-ok">{done.queue[p] ?? "—"}</span>
+            <span className="num grid min-w-10 place-items-center rounded-lg px-2 py-1 text-2xl font-bold leading-none text-white" style={{ background: projectColor(db, p) }}>{done.queue[p] ?? "—"}</span>
           </div>
         ))}
       </div>
@@ -480,11 +481,14 @@ function QueueRefBanner({ db, item, nid, onClear }: { db: Parameters<typeof proj
   const b = db.beneficiaries[item.reception.nid];
   const other = nid && nid !== item.reception.nid;
   return (
-    <section className="animate-fade-up rounded-2xl border-2 border-brand/30 bg-brand-soft px-4 py-3">
+    <section
+      className="animate-fade-up rounded-2xl border-2 px-4 py-3"
+      style={{ borderColor: projectColor(db, item.project), background: projectSoft(projectColor(db, item.project)) }}
+    >
       <div className="flex items-center gap-3">
-        <span className="num grid size-12 shrink-0 place-items-center rounded-xl bg-brand text-xl font-bold text-brand-ink">{item.number}</span>
+        <span className="num grid size-12 shrink-0 place-items-center rounded-xl text-xl font-bold text-white" style={{ background: projectColor(db, item.project) }}>{item.number}</span>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold text-brand">تخدم الآن من قائمة الانتظار · {projectName(db, item.project)}</div>
+          <div className="text-xs font-semibold" style={{ color: projectColor(db, item.project) }}>تخدم الآن من قائمة الانتظار · {projectName(db, item.project)}</div>
           <div className="truncate font-bold">
             {b?.name || item.reception.nid} {b?.type && <span className="font-semibold text-muted">({idTypeLabel(b.type)})</span>}
           </div>
