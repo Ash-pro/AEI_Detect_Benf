@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownUp, CalendarDays, ChevronLeft, History, Lock, PenLine, Pencil, Search, Share2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, History, Lock, PenLine, Pencil, Search, Share2 } from "lucide-react";
 import { ProjectChip } from "./history";
 import { IdTypeTag } from "./id-fields";
 import { EntryEditor } from "./edit-dialog";
@@ -34,7 +34,7 @@ export function DayLog({
   const [showOld, setShowOld] = useState(false);
   const [q, setQ] = useState("");
   const [project, setProject] = useState("");
-  const [oldest, setOldest] = useState(false);
+  const [sort, setSort] = useState<SortMode>("queue");
   const [edit, setEdit] = useState<Entry | null>(null);
 
   /* كل إدخالات الموظف في هذا المركز */
@@ -67,7 +67,10 @@ export function DayLog({
 
   const dayEntries = useMemo(() => mine.filter((e) => e.date === date), [mine, date]);
   const stats = useMemo(() => staffStats(db, user, center, date), [db, user, center, date]);
-  const dayProjects = useMemo(() => Array.from(new Set(dayEntries.flatMap((e) => e.projects))), [dayEntries]);
+  const dayProjects = useMemo(() => {
+    const set = new Set(dayEntries.flatMap((e) => e.projects));
+    return [...db.projects].sort((a, b) => a.order - b.order).map((p) => p.code).filter((c) => set.has(c));
+  }, [dayEntries, db.projects]);
 
   const list = useMemo(() => {
     const digits = normalizeDigits(q);
@@ -79,8 +82,28 @@ export function DayLog({
         if (digits) return e.nid.includes(digits);
         return normalizeArabicName(db.beneficiaries[e.nid]?.name ?? "").includes(term);
       })
-      .sort((a, b) => (oldest ? a.at.localeCompare(b.at) : b.at.localeCompare(a.at)));
-  }, [dayEntries, project, q, oldest, db.beneficiaries]);
+      .sort((a, b) => (sort === "old" ? a.at.localeCompare(b.at) : b.at.localeCompare(a.at)));
+  }, [dayEntries, project, q, sort, db.beneficiaries]);
+
+  /* ترتيب الدور: كل مشروع بتسلسله الخاص — الحالة تظهر في قائمة كل مشروع حُوّلت له */
+  const groups = useMemo(() => {
+    if (sort !== "queue") return [];
+    const codes = project ? [project] : dayProjects;
+    return codes
+      .map((code) => {
+        const items: QueueRow[] = list
+          .filter((e) => e.projects.includes(code))
+          .map((e) => ({ e, project: code, number: isPoint ? pointQueue(db, e).number : e.queue?.[code] }));
+        items.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9) || a.e.at.localeCompare(b.e.at));
+        return { code, items };
+      })
+      .filter((g) => g.items.length);
+  }, [sort, project, dayProjects, list, isPoint, db]);
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    dayEntries.forEach((e) => e.projects.forEach((p) => m.set(p, (m.get(p) ?? 0) + 1)));
+    return m;
+  }, [dayEntries]);
 
   const isToday = date === today;
   const months = Array.from(new Set(visible.map((d) => monthKey(d.date))));
@@ -196,13 +219,22 @@ export function DayLog({
                 className="h-10 w-full rounded-xl border border-line bg-surface ps-9 pe-3 text-sm outline-hidden focus:border-brand"
               />
             </div>
-            <button
-              onClick={() => setOldest((v) => !v)}
-              className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl border border-line px-3 text-sm font-bold hover:bg-sunken"
-            >
-              <ArrowDownUp className="size-4" />
-              {oldest ? "الأقدم أولاً" : "الأحدث أولاً"}
-            </button>
+            <div role="radiogroup" aria-label="الترتيب" className="flex h-10 rounded-xl bg-sunken p-1">
+              {SORTS.map((o) => (
+                <button
+                  key={o.value}
+                  role="radio"
+                  aria-checked={sort === o.value}
+                  onClick={() => setSort(o.value)}
+                  className={cn(
+                    "rounded-lg px-2.5 text-sm font-bold transition",
+                    sort === o.value ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
           {dayProjects.length > 1 && (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -216,13 +248,47 @@ export function DayLog({
                   )}
                 >
                   {p ? projectName(db, p) : "كل المشاريع"}
+                  {p && <span className="num font-semibold opacity-70"> {counts.get(p)}</span>}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {list.length ? (
+        {list.length && sort === "queue" ? (
+          <div>
+            {groups.map((g) => (
+              <section key={g.code} aria-label={`دور ${projectName(db, g.code)}`}>
+                <div className="flex items-center justify-between gap-2 border-y border-line bg-sunken px-4 py-2 sm:px-5">
+                  <span className="font-bold">
+                    دور {projectName(db, g.code)}
+                  </span>
+                  <span className="text-xs font-semibold text-muted">
+                    {casesText(g.items.length)}
+                    {!isPoint && (
+                      <>
+                        {" "}· آخر دور <span className="num">{lastNumber(db, center, g.code, date)}</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <ul className="divide-y divide-line/60">
+                  {g.items.map((r) => (
+                    <QueueLogRow
+                      key={r.e.id + r.project}
+                      row={r}
+                      db={db}
+                      isPoint={isPoint}
+                      canEdit={isToday}
+                      onOpen={() => onOpen(r.e.nid)}
+                      onEdit={() => setEdit(r.e)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        ) : list.length ? (
           <ul className="divide-y divide-line/60">
             {list.map((e) => (
               <LogRow key={e.id} e={e} db={db} isPoint={isPoint} canEdit={isToday} onOpen={() => onOpen(e.nid)} onEdit={() => setEdit(e)} />
@@ -255,6 +321,94 @@ export function DayLog({
         )}
       </Dialog>
     </div>
+  );
+}
+
+type SortMode = "queue" | "new" | "old";
+const SORTS: { value: SortMode; label: string }[] = [
+  { value: "queue", label: "حسب الدور" },
+  { value: "new", label: "الأحدث" },
+  { value: "old", label: "الأقدم" },
+];
+
+interface QueueRow {
+  e: Entry;
+  project: string;
+  number?: number;
+}
+
+/** سطر في ترتيب الدور: رقم الدور + المشروع الذي سيخدم الحالة */
+function QueueLogRow({
+  row,
+  db,
+  isPoint,
+  canEdit,
+  onOpen,
+  onEdit,
+}: {
+  row: QueueRow;
+  db: Db;
+  isPoint: boolean;
+  canEdit: boolean;
+  onOpen: () => void;
+  onEdit: () => void;
+}) {
+  const { e, project, number } = row;
+  const b = db.beneficiaries[e.nid];
+  const others = isPoint ? [] : e.projects.filter((p) => p !== project);
+  const pq = isPoint ? pointQueue(db, e) : null;
+  const otherId = pq?.reception && pq.reception.nid !== e.nid;
+  return (
+    <li className="flex items-center gap-1 pe-2">
+      <button onClick={onOpen} className="group flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-start hover:bg-sunken/50 sm:px-5">
+        <span
+          className={cn(
+            "flex w-16 shrink-0 flex-col items-center justify-center rounded-xl py-1.5 leading-none",
+            number ? "bg-brand text-brand-ink" : "bg-sunken text-muted",
+          )}
+          title="رقم الدور في المشروع"
+        >
+          <span className="num text-xl font-bold">{number ?? "—"}</span>
+          <span className="mt-1 max-w-full truncate px-1 text-[10px] font-bold opacity-90">{number ? projectName(db, project) : "بدون دور"}</span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
+            <IdTypeTag type={b?.type} />
+            {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+          </span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            <span className="num font-semibold tracking-wider text-ink/80">{e.nid}</span>
+            <span>
+              {isPoint ? "الخدمة" : "الاستقبال"} <span className="num">{formatTime(e.at)}</span>
+            </span>
+            {e.corrected && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
+                <PenLine className="size-3" />
+                عُدّل التوجيه من {e.corrected.from.map((p) => projectName(db, p)).join("، ")}
+              </span>
+            )}
+            {otherId && <span>على دور {db.beneficiaries[pq!.reception!.nid]?.name || pq!.reception!.nid} (بهوية أخرى)</span>}
+          </span>
+        </span>
+        {others.length > 0 && (
+          <span className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+            <span className="text-[11px] text-muted">ومحوّلة أيضاً إلى</span>
+            <span className="flex flex-wrap justify-end gap-1">
+              {others.map((p) => (
+                <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
+              ))}
+            </span>
+          </span>
+        )}
+        <ChevronLeft className="hidden size-4 shrink-0 text-muted group-hover:text-brand sm:block" />
+      </button>
+      {canEdit && (
+        <button onClick={onEdit} aria-label="تعديل الإدخال" className="focus-ring grid size-9 shrink-0 place-items-center rounded-lg text-brand hover:bg-brand-soft">
+          <Pencil className="size-4" />
+        </button>
+      )}
+    </li>
   );
 }
 
