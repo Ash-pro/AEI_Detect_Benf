@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
 import { useStore } from "@/lib/store";
+import { useSiteMode } from "@/lib/site-mode";
 import { homePath } from "@/lib/roles";
 import { centerName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ function LoginInner() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { mode } = useSiteMode();
 
   useEffect(() => {
     if (!ready) return;
@@ -132,6 +134,35 @@ function LoginInner() {
         </form>
       </Card>
 
+      {mode === "demo" && (
+        <div className="mt-5 rounded-2xl border border-dashed border-warn/50 bg-warn-soft/40 p-4">
+          <div className="mb-3 text-xs font-bold text-warn">حسابات العرض التجريبي — كلمة المرور 1234</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              ["admin", "أدمن"],
+              ["supervisor", "مشرف"],
+              ["reception.khy", "استقبال خانيونس"],
+              ["reception.gaza", "استقبال غزة"],
+              ["multi.khy", "نقطة WFP + السيلياك · خانيونس"],
+              ["unicef.khy", "نقطة UNICEF · خانيونس"],
+            ].map(([u, label]) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => {
+                  setUsername(u);
+                  setPassword("1234");
+                  setError("");
+                }}
+                className="focus-ring rounded-xl bg-surface px-3 py-2 text-start text-sm shadow-card hover:bg-sunken"
+              >
+                <span className="ltr block font-semibold">{u}</span>
+                <span className="block text-xs text-muted">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </AuthLayout>
   );
 }

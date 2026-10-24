@@ -1,10 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { StoreProvider as LiveStoreProvider } from "@/lib/store";
-import { DemoStoreProvider } from "@/lib/demo-store";
-
-/** وضع العرض التجريبي للمراجعة المحلية فقط */
-const StoreProvider = process.env.NEXT_PUBLIC_DEMO === "1" ? DemoStoreProvider : LiveStoreProvider;
+import { ModeProvider } from "@/lib/site-mode";
 import { ToastProvider } from "@/components/ui/toast";
 import { PwaInstall } from "@/components/pwa/install";
 
@@ -35,12 +31,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-dvh font-sans" suppressHydrationWarning>
-        <StoreProvider>
+        <ModeProvider>
           <ToastProvider>
             {children}
             <PwaInstall />
           </ToastProvider>
-        </StoreProvider>
+        </ModeProvider>
       </body>
     </html>
   );

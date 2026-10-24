@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { History } from "lucide-react";
 import { PageHead } from "@/components/admin/bits";
+import { SiteModeCard } from "@/components/admin/site-mode-card";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldHint, Input, Label, Textarea } from "@/components/ui/field";
@@ -39,6 +40,8 @@ export default function SettingsPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <SiteModeCard />
+
         <Card className="space-y-5 p-5">
           <h2 className="text-lg font-bold">التلميحات</h2>
           <div>
