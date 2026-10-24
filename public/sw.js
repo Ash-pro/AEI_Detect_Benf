@@ -2,7 +2,7 @@
  * الصفحات: الشبكة أولاً ثم النسخة المخزنة عند انقطاع الاتصال.
  * الملفات الثابتة (_next/static، الأيقونات): من الذاكرة أولاً.
  * لا يُخزَّن أي رد يحتوي بيانات مستفيدين (عند الربط مع Supabase تبقى طلبات API خارج الكاش). */
-const VERSION = "aei-v1";
+const VERSION = "aei-v2";
 const SHELL = ["/", "/login", "/setup", "/entry", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {

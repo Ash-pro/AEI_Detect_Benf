@@ -8,6 +8,7 @@ import { useStore } from "@/lib/store";
 import { centerName, projectName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { CENTER_STYLE } from "./center-theme";
+import { AeiLogo } from "./brand-mark";
 
 /** هيدر شاشة الموظف */
 export function StaffHeader() {
@@ -31,6 +32,7 @@ export function StaffHeader() {
     <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur" ref={ref}>
       <div className={cn("h-1.5 w-full", st.strip)} />
       <div className="mx-auto flex h-16 max-w-3xl items-center gap-2.5 px-4">
+        <AeiLogo className="size-9" />
         <span
           className={cn(
             "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",

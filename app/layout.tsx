@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "نظام استقبال وتوجيه المستفيدين",
   applicationName: "استقبال AEI",
   appleWebApp: { capable: true, title: "استقبال AEI", statusBarStyle: "default" },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  icons: { icon: "/icon.png", apple: "/icons/apple-touch-icon.png" },
   formatDetection: { telephone: false },
 };
 
