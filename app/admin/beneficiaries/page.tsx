@@ -55,7 +55,11 @@ export default function BeneficiariesPage() {
             {results.map((r) => (
               <li key={r.nid}>
                 <button
-                  onClick={() => setNid(r.nid)}
+                  onClick={() => {
+                    setNid(r.nid);
+                    // الجوال: الانتقال للتفاصيل أسفل النتائج
+                    if (window.innerWidth < 1024) requestAnimationFrame(() => document.getElementById("benef-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+                  }}
                   className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-start hover:bg-sunken/60 ${nid === r.nid ? "bg-brand-soft" : ""}`}
                 >
                   <span className="min-w-0">
@@ -75,7 +79,7 @@ export default function BeneficiariesPage() {
         </Card>
 
         {b ? (
-          <Card className="overflow-hidden">
+          <Card id="benef-detail" className="scroll-mt-20 overflow-hidden">
             <div className="space-y-3 border-b border-line p-5">
               <BeneficiaryEditor key={b.nid} beneficiary={b} />
               <div className="text-sm text-muted">

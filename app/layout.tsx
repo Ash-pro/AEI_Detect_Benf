@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { StoreProvider } from "@/lib/store";
+import { StoreProvider as LiveStoreProvider } from "@/lib/store";
+import { DemoStoreProvider } from "@/lib/demo-store";
+
+/** وضع العرض التجريبي للمراجعة المحلية فقط */
+const StoreProvider = process.env.NEXT_PUBLIC_DEMO === "1" ? DemoStoreProvider : LiveStoreProvider;
 import { ToastProvider } from "@/components/ui/toast";
 import { PwaInstall } from "@/components/pwa/install";
 

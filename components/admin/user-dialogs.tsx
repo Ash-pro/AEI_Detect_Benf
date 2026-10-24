@@ -547,7 +547,7 @@ export function UserDetailDialog({ user, onClose, onEdit }: { user: User | null;
             <h3 className="mb-2 text-sm font-bold">آخر الإدخالات</h3>
             <ul className="-mx-5 divide-y divide-line/60 border-y border-line sm:-mx-6">
               {recent.map((e) => (
-                <HistoryRow key={e.id} e={e} db={db} />
+                <HistoryRow key={e.id} e={e} db={db} person />
               ))}
             </ul>
           </div>

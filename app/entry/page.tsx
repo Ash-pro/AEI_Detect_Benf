@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
+import { CalendarDays, ChevronDown, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
 import { AppGate } from "@/components/shell/app-gate";
 import { StaffHeader } from "@/components/shell/app-header";
 import { IdInput } from "@/components/entry/id-input";
@@ -31,7 +31,7 @@ import {
 import { idTypeLabel, type QueueItem, waitingCount } from "@/lib/queue";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import type { IdType } from "@/lib/types";
-import { cn, formatTime, normalizeDigits, todayKey } from "@/lib/utils";
+import { cn, formatTime, normalizeDigits, storageGet, storageSet, todayKey } from "@/lib/utils";
 
 /** الشاشة 3 — شاشة الإدخال (الاستقبال والنقاط) */
 function EntryScreen() {
@@ -241,9 +241,16 @@ function EntryScreen() {
 
   const allDone = isPoint && u.projects.length > 0 && u.projects.every((p) => pointDoneToday.has(p));
 
+  const cardEl =
+    beneficiary && !checking ? (
+      <BeneficiaryCard db={db} beneficiary={beneficiary} history={history} status={status} onEdit={() => setEditOpen(true)} />
+    ) : null;
+
   return (
     <main className={cn("mx-auto space-y-4 px-4 pb-24 pt-5", view === "log" ? "max-w-5xl" : "max-w-3xl")}>
-      <ViewTabs view={view} onChange={setView} waiting={waiting} isPoint={isPoint} />
+      <div className="sticky top-[70px] z-30 -mx-4 bg-bg/90 px-4 pb-2 pt-1 backdrop-blur">
+        <ViewTabs view={view} onChange={setView} waiting={waiting} isPoint={isPoint} />
+      </div>
 
       {view === "log" ? (
         <DayLog
@@ -267,12 +274,10 @@ function EntryScreen() {
         <QueueList db={db} user={u} center={c} onPick={pick} />
       ) : (
       <>
-      <div className="flex gap-3 rounded-2xl bg-info-soft px-4 py-3 text-[15px] font-semibold text-info">
-        <Info className="mt-0.5 size-5 shrink-0" />
-        <p>{hint}</p>
-      </div>
+      {/* أثناء العمل على هوية: إخفاء التلميح والإحصائيات للتركيز على الحالة */}
+      {!nid && <Hint text={hint} storageKey={`aei.hint.${u.role}`} />}
 
-      <StatsStrip stats={stats} isPoint={isPoint} waiting={isPoint ? waiting : undefined} onShare={() => { setShareDay(null); setShareOpen(true); }} />
+      {!nid && <StatsStrip stats={stats} isPoint={isPoint} waiting={isPoint ? waiting : undefined} onShare={() => { setShareDay(null); setShareOpen(true); }} />}
 
       {lastDone && !nid && <QueueTicket db={db} done={lastDone} onClose={() => setLastDone(null)} />}
 
@@ -296,9 +301,8 @@ function EntryScreen() {
         </div>
       )}
 
-      {beneficiary && !checking && (
-        <BeneficiaryCard db={db} beneficiary={beneficiary} history={history} status={status} onEdit={() => setEditOpen(true)} />
-      )}
+      {/* الاستقبال: بطاقة الهوية أولاً للتحقق. النقطة: التوجيه والخدمة أولاً ثم البطاقة */}
+      {!isPoint && cardEl}
 
       {nid && !checking && !lookupError && (
         <Card className="animate-fade-up space-y-5 p-5">
@@ -330,9 +334,9 @@ function EntryScreen() {
           {isPoint && <RoutingPanel reception={routing} user={u} center={c} onFix={() => setRoutingOpen(true)} />}
 
           <fieldset>
-            <legend className="mb-2.5 text-sm font-bold">
-              {isPoint ? "إدخال الخدمة في" : "التحويل إلى"}
-              {!isPoint && <span className="ms-2 font-normal text-muted">يمكن اختيار أكثر من مشروع</span>}
+            <legend className="mb-2.5 flex w-full flex-wrap items-baseline gap-x-2 text-sm font-bold">
+              <span>{isPoint ? "إدخال الخدمة في:" : "التحويل إلى:"}</span>
+              {!isPoint && <span className="text-xs font-normal text-muted">يمكن اختيار أكثر من مشروع</span>}
             </legend>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {projects.map((p) => {
@@ -364,31 +368,23 @@ function EntryScreen() {
 
           <FieldError>{formError}</FieldError>
 
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <Button variant="secondary" size="lg" onClick={reset}>
+          {/* زر الإدخال ثابت أسفل الشاشة على الجوال حتى لا يحتاج الموظف للتمرير */}
+          <div className="sticky bottom-0 z-10 -mx-5 -mb-5 flex gap-2 rounded-b-2xl border-t border-line bg-surface/95 px-5 py-3 backdrop-blur sm:static sm:mx-0 sm:mb-0 sm:border-0 sm:bg-transparent sm:p-0">
+            <Button variant="secondary" size="xl" className="px-5" onClick={reset}>
               إلغاء
             </Button>
-            <Button size="xl" className="w-full sm:flex-1" disabled={!selected.length || busy} onClick={submit}>
+            <Button size="xl" className="flex-1" disabled={!selected.length || busy} onClick={submit}>
               {busy ? "جارٍ الحفظ…" : !isPoint && todayHere ? "تحديث إدخال اليوم" : isPoint ? "إدخال الخدمة" : "إدخال"}
             </Button>
           </div>
         </Card>
       )}
 
+      {isPoint && cardEl}
+
       </>
       )}
 
-      {isPoint && view === "entry" && (
-        <button
-          onClick={() => setView("queue")}
-          className="focus-ring fixed end-0 top-[58%] z-30 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-s-2xl bg-ink py-3 text-[11px] font-bold leading-tight text-surface shadow-pop active:scale-[0.97] lg:hidden"
-          aria-label={`قائمة الانتظار، ${waiting} بانتظار الخدمة`}
-        >
-          <ListOrdered className="size-5" />
-          الانتظار
-          <span className={cn("num min-w-7 rounded-full px-1.5 text-sm leading-6", waiting ? "bg-warn text-white" : "bg-surface/20")}>{waiting}</span>
-        </button>
-      )}
 
       {beneficiary && (
         <EditDialog
@@ -546,6 +542,28 @@ function QueueRefBanner({ db, item, nid, onClear }: { db: Parameters<typeof proj
           : "إذا خدمت أحد الأطفال، اكتب هوية الطفل مكان هوية ولي الأمر ويبقى الدور مربوطاً."}
       </p>
     </section>
+  );
+}
+
+/** التلميح: مطوي بسطر واحد بعد أول قراءة، ويُفتح عند الحاجة */
+function Hint({ text, storageKey }: { text: string; storageKey: string }) {
+  const [open, setOpen] = useState(true);
+  useEffect(() => setOpen(storageGet<boolean>(storageKey, true)), [storageKey]);
+  if (!text) return null;
+  const toggle = () => {
+    storageSet(storageKey, !open);
+    setOpen(!open);
+  };
+  return (
+    <button
+      onClick={toggle}
+      aria-expanded={open}
+      className="focus-ring flex w-full items-start gap-3 rounded-2xl bg-info-soft px-4 py-3 text-start text-[15px] font-semibold text-info"
+    >
+      <Info className="mt-0.5 size-5 shrink-0" />
+      <span className={cn("flex-1", !open && "truncate")}>{text}</span>
+      <ChevronDown className={cn("mt-0.5 size-5 shrink-0 transition", open && "rotate-180")} aria-hidden />
+    </button>
   );
 }
 

@@ -44,7 +44,7 @@ export interface AddEntryInput {
   queueRef?: string;
 }
 
-interface Ctx {
+export interface Ctx {
   ready: boolean;
   online: boolean;
   db: Db;
@@ -72,7 +72,7 @@ interface Ctx {
   saveSettings: (s: Settings) => Promise<string | null>;
 }
 
-const StoreContext = createContext<Ctx | null>(null);
+export const StoreContext = createContext<Ctx | null>(null);
 
 const EMPTY: Db = {
   version: 1,

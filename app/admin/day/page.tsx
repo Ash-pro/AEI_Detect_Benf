@@ -7,6 +7,7 @@ import { ArrowRight, Pencil, Search } from "lucide-react";
 import { CenterTabs, ExportButton, PageHead, Segmented, StatCard } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { KindTag, ProjectChip } from "@/components/entry/history";
+import { projectColor } from "@/lib/project-colors";
 import { IdTypeTag } from "@/components/entry/id-fields";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
@@ -61,10 +62,10 @@ function DayInner() {
         <StatCard label="موظفون" value={s.staff} />
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="-mx-4 mt-6 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         <button
           onClick={() => setProject("")}
-          className={`rounded-xl border px-3 py-1.5 text-sm font-bold ${!project ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface"}`}
+          className={`shrink-0 rounded-xl border px-3 py-1.5 text-sm font-bold ${!project ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface"}`}
         >
           كل المشاريع
         </button>
@@ -74,12 +75,15 @@ function DayInner() {
             <button
               key={p.code}
               onClick={() => setProject(p.code === project ? "" : p.code)}
-              className={`rounded-xl border px-3 py-1.5 text-sm font-bold ${project === p.code ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface"}`}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-bold ${project === p.code ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface"}`}
             >
+              <span className="size-2 rounded-full" style={{ background: projectColor(db, p.code) }} />
               {p.name} <span className="num font-semibold text-muted">{p.referred}/{p.served}</span>
             </button>
           ))}
       </div>
+
+      <p className="mt-2 text-xs text-muted">الرقمان بجانب كل مشروع: موجّه من الاستقبال / مخدوم في النقطة</p>
 
       <Card className="mt-4 overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
@@ -105,7 +109,38 @@ function DayInner() {
           />
           <span className="num text-sm font-semibold text-muted">{list.length} إدخال</span>
         </div>
-        <div className="max-h-[560px] overflow-auto">
+        {/* الجوال: بطاقة لكل إدخال */}
+        <ul className="divide-y divide-line/60 sm:hidden">
+          {list.map((e) => (
+            <li key={e.id} className="flex items-start gap-3 px-4 py-3">
+              <span className="num w-11 shrink-0 pt-0.5 font-bold">{formatTime(e.at)}</span>
+              <span className="min-w-0 flex-1 space-y-1">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="truncate font-bold">{db.beneficiaries[e.nid]?.name || "—"}</span>
+                  <IdTypeTag type={db.beneficiaries[e.nid]?.type} />
+                  {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                  <span className="num font-semibold text-ink/80">{e.nid}</span>
+                  <KindTag kind={e.kind} />
+                  <span>{centerName(db, e.center, true)} · {userName(db, e.userId)}</span>
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  {e.projects.map((p) => (
+                    <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
+                  ))}
+                </span>
+              </span>
+              {canEdit && (
+                <button onClick={() => setEdit(e)} className="focus-ring grid size-10 shrink-0 place-items-center rounded-lg text-brand hover:bg-brand-soft" aria-label="تعديل">
+                  <Pencil className="size-4" />
+                </button>
+              )}
+            </li>
+          ))}
+          {!list.length && <li className="px-4 py-12 text-center text-sm text-muted">لا توجد إدخالات مطابقة</li>}
+        </ul>
+        <div className="hidden max-h-[560px] overflow-auto sm:block">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="sticky top-0 z-10 bg-surface text-xs text-muted shadow-[0_1px_0_var(--color-line)]">
               <tr>
@@ -124,7 +159,7 @@ function DayInner() {
                 <tr key={e.id} className="hover:bg-sunken/40">
                   <td className="num px-4 py-2 font-semibold">{formatTime(e.at)}</td>
                   <td className="num px-3 py-2">{e.nid}</td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-3 py-2">
                     {db.beneficiaries[e.nid]?.name || <span className="text-muted">—</span>}
                     <IdTypeTag type={db.beneficiaries[e.nid]?.type} className="ms-1.5" />
                     {e.isNew && <span className="ms-2 rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
@@ -139,8 +174,8 @@ function DayInner() {
                       ))}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-muted">{centerName(db, e.center, true)}</td>
-                  <td className="px-3 py-2 text-muted">{userName(db, e.userId)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-muted">{centerName(db, e.center, true)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-muted">{userName(db, e.userId)}</td>
                   {canEdit && <td className="px-2 py-1">
                     <button
                       onClick={() => setEdit(e)}

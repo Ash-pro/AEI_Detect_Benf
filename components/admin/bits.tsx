@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 
 export function PageHead({ title, sub, actions }: { title: string; sub?: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6 sm:gap-4">
       <div>
-        <h1 className="text-2xl font-bold">{title}</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">{title}</h1>
         {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -74,24 +74,28 @@ export function StatCard({
 }) {
   const cls = { ink: "text-ink", brand: "text-brand", info: "text-info", ok: "text-ok" }[tone];
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-      <div className="text-sm font-semibold text-muted">{label}</div>
-      <div className={cn("num mt-2 text-[34px] font-bold leading-none", cls)}>{value.toLocaleString("en-US")}</div>
+    <div className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+      <div className="truncate text-[13px] font-semibold text-muted sm:text-sm">{label}</div>
+      <div className={cn("num mt-1.5 text-[28px] font-bold leading-none sm:mt-2 sm:text-[34px]", cls)}>{value.toLocaleString("en-US")}</div>
       {delta !== undefined && delta !== null && (
-        <div className={cn("mt-2 text-xs font-semibold", delta > 0 ? "text-ok" : delta < 0 ? "text-bad" : "text-muted")}>
-          {delta === 0 ? "مثل يوم العمل السابق" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)} عن يوم العمل السابق`}
+        <div
+          className={cn("mt-2 truncate text-xs font-semibold", delta > 0 ? "text-ok" : delta < 0 ? "text-bad" : "text-muted")}
+          title="مقارنة بيوم العمل السابق"
+        >
+          {delta === 0 ? "مثل السابق" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)}`}
+          <span className="hidden sm:inline">{delta === 0 ? "" : " عن يوم العمل السابق"}</span>
         </div>
       )}
     </div>
   );
 }
 
-/** زر تصدير Excel — تصميم فقط حتى ربط قاعدة البيانات */
+/** زر تصدير Excel — التصدير الفعلي قيد التجهيز */
 export function ExportButton({ label, scope, size = "md" }: { label: string; scope: string; size?: "sm" | "md" }) {
   const toast = useToast();
   return (
     <button
-      onClick={() => toast(`تصدير ${scope} سيعمل بعد ربط قاعدة البيانات`, "info")}
+      onClick={() => toast(`تصدير ${scope} إلى Excel قيد التجهيز وسيتوفر قريباً`, "info")}
       className={cn(
         "focus-ring inline-flex items-center gap-2 rounded-xl border border-ok/40 bg-ok-soft font-bold text-ok hover:bg-ok/15",
         size === "sm" ? "px-2.5 py-1 text-xs" : "px-4 py-2.5 text-sm",

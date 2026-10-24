@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, History, Pencil, UserRound } from "lucide-react";
+import { CalendarClock, ChevronDown, History, Pencil, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { HistoryRow, KindTag, ProjectChip } from "./history";
 import { IdTypeTag } from "./id-fields";
 import type { Beneficiary, Db, Entry } from "@/lib/types";
 import { centerName, projectName, userName } from "@/lib/queries";
-import { dayFull, formatDate, formatTime, sinceText, todayKey, weekday } from "@/lib/utils";
+import { cn, dayFull, formatDate, formatTime, sinceText, todayKey, weekday } from "@/lib/utils";
 
 /** بطاقة الهوية: البيانات + آخر زيارة + سجل الزيارات + زر التعديل */
 export function BeneficiaryCard({
@@ -25,6 +25,8 @@ export function BeneficiaryCard({
   onEdit: () => void;
 }) {
   const [all, setAll] = useState(false);
+  // السجل مطوي افتراضياً: آخر زيارة تكفي في العمل اليومي، والتفاصيل عند الحاجة
+  const [showHist, setShowHist] = useState(false);
   // آخر زيارة: آخر زيارة قبل اليوم، وإلا إدخال اليوم
   const today = todayKey();
   const last = history.find((e) => e.date !== today) ?? history[0];
@@ -95,19 +97,29 @@ export function BeneficiaryCard({
 
       {rest.length > 0 && (
         <div className="border-t border-line">
-          <div className="flex items-center gap-2 px-5 pb-1 pt-3 text-xs font-semibold text-muted">
+          <button
+            onClick={() => setShowHist((v) => !v)}
+            aria-expanded={showHist}
+            className="focus-ring flex w-full items-center gap-2 px-5 py-3 text-sm font-semibold text-muted hover:bg-sunken/50"
+          >
             <History className="size-4" />
             سجل الزيارات
-          </div>
-          <ul className="divide-y divide-line/60">
-            {rest.slice(0, 5).map((e) => (
-              <HistoryRow key={e.id} e={e} db={db} />
-            ))}
-          </ul>
-          {history.length > 6 && (
-            <button onClick={() => setAll(true)} className="px-5 pb-3 pt-1 text-sm font-semibold text-brand hover:underline">
-              عرض الكل (<span className="num">{history.length}</span>)
-            </button>
+            <span className="num rounded-full bg-sunken px-2 text-xs leading-5 text-ink">{rest.length}</span>
+            <ChevronDown className={cn("ms-auto size-4 transition", showHist && "rotate-180")} />
+          </button>
+          {showHist && (
+            <>
+              <ul className="divide-y divide-line/60 border-t border-line/60">
+                {rest.slice(0, 5).map((e) => (
+                  <HistoryRow key={e.id} e={e} db={db} />
+                ))}
+              </ul>
+              {rest.length > 5 && (
+                <button onClick={() => setAll(true)} className="px-5 pb-3 pt-1 text-sm font-semibold text-brand hover:underline">
+                  عرض الكل (<span className="num">{history.length}</span>)
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

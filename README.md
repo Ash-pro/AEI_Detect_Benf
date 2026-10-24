@@ -75,3 +75,10 @@ lib/mock-data.ts            البيانات والمستخدمون التجري
 lib/store.tsx               المخزن التجريبي (يُستبدل بـ Supabase)
 lib/queries.ts              الإحصائيات ونصوص الواتساب
 ```
+
+## وضع العرض التجريبي (للمراجعة المحلية فقط)
+
+```bash
+NEXT_PUBLIC_DEMO=1 npm run dev
+```
+يشغّل الموقع ببيانات وحسابات تجريبية في المتصفح بدون Supabase (كلمة المرور `1234`، مثل `admin` و`reception.khy` و`multi.khy`). لا يُستخدم على Vercel.

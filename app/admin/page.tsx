@@ -10,6 +10,7 @@ import { HistoryRow } from "@/components/entry/history";
 import { useStore } from "@/lib/store";
 import { adminShareText, type CenterFilter, dayStats, filterCenter, workedDays } from "@/lib/queries";
 import { dayFull, todayKey, weekday } from "@/lib/utils";
+import { projectColor } from "@/lib/project-colors";
 
 /** الشاشة 4 — لوحة الأدمن الرئيسية */
 export default function AdminHome() {
@@ -37,6 +38,7 @@ export default function AdminHome() {
           <>
             <input
               type="date"
+              lang="en-GB"
               aria-label="اليوم"
               dir="ltr"
               max={todayKey()}
@@ -71,7 +73,32 @@ export default function AdminHome() {
               <ExportButton label="تصدير اليوم" scope={`يوم ${dayFull(date)}`} />
             </div>
           </div>
-          <div className="overflow-x-auto">
+          {/* الجوال: بطاقة لكل مشروع */}
+          <ul className="divide-y divide-line/70 sm:hidden">
+            {rows.map((r) => (
+              <li key={r.code}>
+                <Link href={`/admin/day?d=${date}&c=${center}&p=${r.code}`} className="flex items-center gap-3 px-4 py-3 active:bg-sunken">
+                  <span className="h-10 w-1.5 shrink-0 rounded-full" style={{ background: projectColor(db, r.code) }} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold">{r.name}</span>
+                    {center === "ALL" && (r.referred > 0 || r.served > 0) && (
+                      <span className="block text-[11px] text-muted">
+                        غزة <span className="num">{r.byCenter.GAZA.referred}/{r.byCenter.GAZA.served}</span> · خانيونس{" "}
+                        <span className="num">{r.byCenter.KHY.referred}/{r.byCenter.KHY.served}</span>
+                      </span>
+                    )}
+                  </span>
+                  <span className="grid grid-cols-3 gap-3 text-center">
+                    <span><span className="num block font-bold">{r.referred}</span><span className="text-[10px] text-muted">موجّه</span></span>
+                    <span><span className="num block font-bold text-ok">{r.served}</span><span className="text-[10px] text-muted">مخدوم</span></span>
+                    <span><span className={`num block font-bold ${r.waiting ? "text-warn" : "text-muted"}`}>{r.waiting}</span><span className="text-[10px] text-muted">بانتظار</span></span>
+                  </span>
+                  <ChevronLeft className="size-4 shrink-0 text-muted" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full text-sm sm:min-w-[560px]">
               <thead className="bg-sunken/70 text-xs text-muted">
                 <tr>
@@ -86,7 +113,8 @@ export default function AdminHome() {
                 {rows.map((r) => (
                   <tr key={r.code} className="group hover:bg-sunken/50">
                     <td className="px-5 py-3">
-                      <Link href={`/admin/day?d=${date}&c=${center}&p=${r.code}`} className="font-bold group-hover:text-brand">
+                      <Link href={`/admin/day?d=${date}&c=${center}&p=${r.code}`} className="flex items-center gap-2 font-bold group-hover:text-brand">
+                        <span className="size-2.5 shrink-0 rounded-full" style={{ background: projectColor(db, r.code) }} />
                         {r.name}
                       </Link>
                       {center === "ALL" && (r.referred > 0 || r.served > 0) && (
@@ -142,7 +170,7 @@ export default function AdminHome() {
           {latest.length ? (
             <ul className="divide-y divide-line/60">
               {latest.map((e) => (
-                <HistoryRow key={e.id} e={e} db={db} />
+                <HistoryRow key={e.id} e={e} db={db} person timeOnly />
               ))}
             </ul>
           ) : (

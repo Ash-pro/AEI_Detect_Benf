@@ -40,12 +40,39 @@ export function ProjectChip({ db, code, number, tone = "sunken" }: { db: Db; cod
   );
 }
 
-export function HistoryRow({ e, db, action }: { e: Entry; db: Db; action?: React.ReactNode }) {
+export function HistoryRow({
+  e,
+  db,
+  action,
+  person,
+  timeOnly,
+}: {
+  e: Entry;
+  db: Db;
+  action?: React.ReactNode;
+  /** إظهار اسم المستفيد ورقم هويته (في القوائم العامة) */
+  person?: boolean;
+  /** الوقت فقط بدون التاريخ (قوائم يوم واحد) */
+  timeOnly?: boolean;
+}) {
+  const b = person ? db.beneficiaries[e.nid] : undefined;
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-sm">
-      <span className="num w-[132px] shrink-0 font-semibold">
-        {dayFull(e.date)} <span className="text-muted">{formatTime(e.at)}</span>
+      <span className={cn("num shrink-0 font-semibold", timeOnly ? "w-12" : "w-[132px]")}>
+        {!timeOnly && <>{dayFull(e.date)} </>}
+        <span className={timeOnly ? "" : "text-muted"}>{formatTime(e.at)}</span>
       </span>
+      {person && (
+        <span className="flex min-w-0 basis-full items-center gap-1.5 sm:basis-auto">
+          <span className="truncate font-bold">{b?.name || "—"}</span>
+          {b?.type && (
+            <span className="shrink-0 rounded bg-sunken px-1.5 text-[11px] font-bold text-muted">
+              {b.type === "MOTHER" ? "أم" : b.type === "FATHER" ? "أب" : "طفل"}
+            </span>
+          )}
+          <span className="num shrink-0 text-xs text-muted">{e.nid}</span>
+        </span>
+      )}
       <KindTag kind={e.kind} />
       <span className="flex flex-1 flex-wrap items-center gap-1.5">
         {e.projects.map((p) => (

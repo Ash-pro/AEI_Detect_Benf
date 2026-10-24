@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { Bar, CenterTabs, ExportButton, PageHead, StatCard } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
-import { type CenterFilter, dayStats, months, staffRanking, workedDays } from "@/lib/queries";
+import { type CenterFilter, dayStats, months, projectName, staffRanking, workedDays } from "@/lib/queries";
+import { projectColor } from "@/lib/project-colors";
 import { dayNum, monthLabel, todayKey } from "@/lib/utils";
 
 /** الشاشة 7 — التقارير الشهرية */
@@ -16,20 +17,26 @@ export default function ReportsPage() {
 
   const days = useMemo(() => workedDays(db, center, month).slice().reverse(), [db, center, month]);
   const stats = useMemo(() => days.map((d) => dayStats(db, d, center)), [db, days, center]);
+  // اليوم الحالي غير مكتمل: يدخل في المجاميع، ولا يدخل في الرسم والمتوسط حتى لا يظهر هبوط وهمي
+  const today = todayKey();
+  const fullDays = days.filter((d) => d !== today);
+  const fullStats = stats.filter((s) => s.date !== today);
   const totals = useMemo(() => {
     const rec = stats.reduce((n, s) => n + s.reception, 0);
     const nw = stats.reduce((n, s) => n + s.receptionNew, 0);
     const pt = stats.reduce((n, s) => n + s.point, 0);
     const projects = db.projects
       .map((p) => ({
+        code: p.code,
         name: p.name,
         referred: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.referred ?? 0), 0),
         served: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.served ?? 0), 0),
       }))
       .filter((p) => p.referred || p.served)
       .sort((a, b) => b.served - a.served);
-    return { rec, nw, pt, projects, avg: stats.length ? Math.round(rec / stats.length) : 0 };
-  }, [stats, db.projects]);
+    const fullRec = fullStats.reduce((n, s) => n + s.reception, 0);
+    return { rec, nw, pt, projects, avg: fullStats.length ? Math.round(fullRec / fullStats.length) : 0 };
+  }, [stats, fullStats, db.projects]);
   const ranking = useMemo(() => staffRanking(db, new Set(days), center).slice(0, 10), [db, days, center]);
   const maxP = Math.max(1, ...totals.projects.map((p) => Math.max(p.referred, p.served)));
 
@@ -73,7 +80,8 @@ export default function ReportsPage() {
             <span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-5 rounded bg-ok" />النقاط</span>
           </div>
         </div>
-        <LineChart labels={days.map(dayNum)} a={stats.map((s) => s.reception)} b={stats.map((s) => s.point)} />
+        <LineChart labels={fullDays.map(dayNum)} a={fullStats.map((s) => s.reception)} b={fullStats.map((s) => s.point)} />
+        {days.includes(today) && <p className="mt-2 text-xs text-muted">اليوم لم يكتمل بعد، فلا يظهر في الرسم ولا في المتوسط.</p>}
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -83,7 +91,10 @@ export default function ReportsPage() {
             {totals.projects.map((p) => (
               <li key={p.name}>
                 <div className="mb-1.5 flex items-center justify-between text-sm">
-                  <span className="font-bold">{p.name}</span>
+                  <span className="flex items-center gap-2 font-bold">
+                    <span className="size-2.5 rounded-full" style={{ background: projectColor(db, p.code) }} />
+                    {p.name}
+                  </span>
                   <span className="num text-muted">
                     موجّه <b className="text-ink">{p.referred}</b> · مخدوم <b className="text-ink">{p.served}</b>
                   </span>
@@ -106,7 +117,7 @@ export default function ReportsPage() {
                   <td className="num w-10 px-5 py-2.5 text-muted">{i + 1}</td>
                   <td className="py-2.5 font-semibold">{r.user!.fullName}</td>
                   <td className="px-3 py-2.5 text-xs text-muted">
-                    {r.user!.role === "RECEPTION" ? "استقبال" : `نقطة ${r.user!.projects.join(" + ")}`}
+                    {r.user!.role === "RECEPTION" ? "استقبال" : `نقطة ${r.user!.projects.map((c) => projectName(db, c)).join(" + ")}`}
                   </td>
                   <td className="num px-5 py-2.5 text-end font-bold">{r.count}</td>
                 </tr>

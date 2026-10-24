@@ -1,21 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Download, CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Search, Settings, Users } from "lucide-react";
+import { Download, CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Menu, Search, Settings, Users, X } from "lucide-react";
 import { BrandMark } from "@/components/shell/brand-mark";
 import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-const NAV: { href: string; label: string; icon: typeof LayoutDashboard; supervisor?: boolean }[] = [
-  { href: "/admin", label: "الرئيسية", icon: LayoutDashboard },
-  { href: "/admin/days", label: "سجل الأيام", icon: CalendarDays, supervisor: true },
-  { href: "/admin/reports", label: "التقارير", icon: LineChart },
-  { href: "/admin/users", label: "المستخدمون", icon: Users, supervisor: true },
-  { href: "/admin/projects", label: "المشاريع والمراكز", icon: FolderKanban, supervisor: true },
-  { href: "/admin/beneficiaries", label: "المستفيدون", icon: Search },
-  { href: "/admin/settings", label: "الإعدادات", icon: Settings },
+const NAV: { href: string; label: string; short: string; icon: typeof LayoutDashboard; supervisor?: boolean; main?: boolean }[] = [
+  { href: "/admin", label: "الرئيسية", short: "الرئيسية", icon: LayoutDashboard, main: true },
+  { href: "/admin/days", label: "سجل الأيام", short: "الأيام", icon: CalendarDays, supervisor: true, main: true },
+  { href: "/admin/users", label: "المستخدمون", short: "المستخدمون", icon: Users, supervisor: true, main: true },
+  { href: "/admin/beneficiaries", label: "المستفيدون", short: "المستفيدون", icon: Search, main: true },
+  { href: "/admin/reports", label: "التقارير", short: "التقارير", icon: LineChart },
+  { href: "/admin/projects", label: "المشاريع والمراكز", short: "المشاريع", icon: FolderKanban, supervisor: true },
+  { href: "/admin/settings", label: "الإعدادات", short: "الإعدادات", icon: Settings },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, logout } = useStore();
   const nav = user?.role === "SUPERVISOR" ? NAV.filter((n) => n.supervisor) : NAV;
+  const [more, setMore] = useState(false);
+  // الجوال: شريط سفلي بأهم الصفحات، والباقي في "المزيد"
+  const primary = user?.role === "SUPERVISOR" ? nav : nav.filter((n) => n.main);
+  const secondary = nav.filter((n) => !primary.includes(n));
+  const current = nav.find((n) => (n.href === "/admin" ? path === "/admin" : path.startsWith(n.href)) || (n.href === "/admin/days" && path.startsWith("/admin/day")));
   const isActive = (href: string) => (href === "/admin" ? path === "/admin" : path.startsWith(href)) || (href === "/admin/days" && path.startsWith("/admin/day"));
 
   return (
@@ -83,36 +89,107 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
       <div className="min-w-0">
         <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur lg:hidden">
-          <div className="flex h-14 items-center justify-between px-4">
+          <div className="flex h-14 items-center justify-between gap-3 px-4">
             <BrandMark />
-            <button
-              onClick={() => {
-                logout();
-                router.replace("/login");
-              }}
-              className="focus-ring grid size-9 place-items-center rounded-lg text-bad hover:bg-bad-soft"
-              aria-label="تسجيل الخروج"
-            >
-              <LogOut className="size-4" />
-            </button>
+            {current && <span className="truncate text-sm font-bold text-muted">{current.label}</span>}
           </div>
-          <nav className="flex gap-1 overflow-x-auto px-3 pb-2" aria-label="لوحة التحكم">
-            {nav.map((n) => (
+        </header>
+
+        {/* شريط التنقل السفلي على الجوال */}
+        <nav
+          aria-label="لوحة التحكم"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        >
+          <div className="mx-auto flex max-w-xl">
+            {primary.map((n) => (
               <Link
                 key={n.href}
                 href={n.href}
+                aria-current={isActive(n.href) ? "page" : undefined}
                 className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold",
-                  isActive(n.href) ? "bg-brand-soft text-brand" : "text-muted",
+                  "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold transition",
+                  isActive(n.href) ? "text-brand" : "text-muted",
                 )}
               >
-                <n.icon className="size-4" />
-                {n.label}
+                <span className={cn("grid h-7 w-12 place-items-center rounded-full", isActive(n.href) && "bg-brand-soft")}>
+                  <n.icon className="size-5" />
+                </span>
+                {n.short}
               </Link>
             ))}
-          </nav>
-        </header>
-        <main className="mx-auto max-w-6xl px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pt-8">{children}</main>
+            <button
+              onClick={() => setMore(true)}
+              aria-expanded={more}
+              className={cn(
+                "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold",
+                secondary.some((n) => isActive(n.href)) ? "text-brand" : "text-muted",
+              )}
+            >
+              <span className={cn("grid h-7 w-12 place-items-center rounded-full", secondary.some((n) => isActive(n.href)) && "bg-brand-soft")}>
+                <Menu className="size-5" />
+              </span>
+              المزيد
+            </button>
+          </div>
+        </nav>
+
+        {more && (
+          <div className="fixed inset-0 z-50 flex items-end bg-ink/40 animate-fade-in lg:hidden" onClick={() => setMore(false)}>
+            <div
+              className="w-full animate-fade-up rounded-t-3xl bg-surface p-3 pb-[max(16px,env(safe-area-inset-bottom))] shadow-pop"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-2 flex items-center gap-3 rounded-2xl bg-sunken px-3 py-2.5">
+                <span className="grid size-10 place-items-center rounded-full bg-surface font-bold text-muted">{user?.fullName.trim()[0]}</span>
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="truncate font-bold">{user?.fullName}</div>
+                  <div className="ltr text-start text-xs text-muted">{user?.username}</div>
+                </div>
+                <button onClick={() => setMore(false)} aria-label="إغلاق" className="focus-ring grid size-10 place-items-center rounded-xl text-muted hover:bg-surface">
+                  <X className="size-5" />
+                </button>
+              </div>
+              {secondary.map((n) => (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  onClick={() => setMore(false)}
+                  className={cn(
+                    "flex min-h-12 items-center gap-3 rounded-xl px-3 text-[15px] font-semibold",
+                    isActive(n.href) ? "bg-brand-soft text-brand" : "hover:bg-sunken",
+                  )}
+                >
+                  <n.icon className="size-5 text-muted" />
+                  {n.label}
+                </Link>
+              ))}
+              {!isStandalone() && (
+                <button
+                  onClick={() => {
+                    setMore(false);
+                    requestInstall();
+                  }}
+                  className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-[15px] font-semibold hover:bg-sunken"
+                >
+                  <Download className="size-5 text-muted" />
+                  تثبيت التطبيق
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setMore(false);
+                  logout();
+                  router.replace("/login");
+                }}
+                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-[15px] font-semibold text-bad hover:bg-bad-soft"
+              >
+                <LogOut className="size-5" />
+                تسجيل الخروج
+              </button>
+            </div>
+          </div>
+        )}
+        <main className="mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-20 lg:pt-8">{children}</main>
       </div>
     </div>
   );

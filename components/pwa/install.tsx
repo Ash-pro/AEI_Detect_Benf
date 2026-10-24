@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Download, EllipsisVertical, Share, SquarePlus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,9 @@ export function PwaInstall() {
   const [hidden, setHidden] = useState(true);
   const [isIos, setIsIos] = useState(false);
   const [help, setHelp] = useState(false);
+  // الزر العائم في شاشتي المركز والدخول فقط، حتى لا يغطي شاشات العمل اليومية
+  const path = usePathname();
+  const floating = path === "/login" || path === "/setup";
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -86,7 +90,7 @@ export function PwaInstall() {
 
   return (
     <>
-      {!hidden && (
+      {!hidden && floating && (
         <div
           className={cn("fixed start-0 z-40 flex animate-fade-in flex-col items-start gap-1", !deferred && "lg:hidden")}
           style={{ bottom: "calc(112px + env(safe-area-inset-bottom, 0px))" }}
