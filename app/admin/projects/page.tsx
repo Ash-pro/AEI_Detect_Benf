@@ -214,7 +214,7 @@ export default function ProjectsPage() {
                         aria-label={`${p.name} في ${c.name}`}
                         onClick={() => toggleCenter(p, c.code)}
                         className={cn(
-                          "focus-ring mx-auto grid size-7 place-items-center rounded-md border-2",
+                          "focus-ring relative mx-auto grid size-7 place-items-center rounded-md border-2 after:absolute after:-inset-2",
                           p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line",
                         )}
                       >

@@ -10,9 +10,13 @@ export function Label({ children, required, htmlFor }: { children: React.ReactNo
   );
 }
 
-export function FieldError({ children }: { children?: React.ReactNode }) {
+export function FieldError({ children, id }: { children?: React.ReactNode; id?: string }) {
   if (!children) return null;
-  return <p className="mt-1.5 text-sm font-medium text-bad">{children}</p>;
+  return (
+    <p id={id} className="mt-1.5 text-sm font-medium text-bad">
+      {children}
+    </p>
+  );
 }
 
 export function FieldHint({ children }: { children?: React.ReactNode }) {

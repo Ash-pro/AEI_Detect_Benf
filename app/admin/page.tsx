@@ -145,7 +145,7 @@ export default function AdminHome() {
                       )}
                     </td>
                     <td className="pe-4">
-                      <Link href={`/admin/day?d=${date}&c=${center}&p=${r.code}`} aria-label={`تفاصيل ${r.name}`}>
+                      <Link href={`/admin/day?d=${date}&c=${center}&p=${r.code}`} aria-label={`تفاصيل ${r.name}`} className="grid size-10 place-items-center rounded-lg hover:bg-sunken">
                         <ChevronLeft className="size-4 text-muted group-hover:text-brand" />
                       </Link>
                     </td>
@@ -156,14 +156,14 @@ export default function AdminHome() {
           </div>
           <p className="flex gap-2 border-t border-line px-5 py-3 text-xs text-muted">
             <Info className="size-4 shrink-0" />
-            الاستقبال يسجّل هوية ولي الأمر ويعطيه رقم دور في كل مشروع، والنقطة تسجّل هوية من خدمته (قد يكون الطفل). "بانتظار" = محوّلة اليوم ولم تُخدم بعد.
+            الاستقبال يسجّل هوية الحالة ويعطيها رقم دور في كل مشروع، والنقطة تسجّل هوية من خدمته. "بانتظار" = محوّلة اليوم ولم تُخدم بعد.
           </p>
         </Card>
 
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <h2 className="text-lg font-bold">آخر الإدخالات</h2>
-            <Link href={`/admin/day?d=${date}&c=${center}`} className="text-sm font-semibold text-brand hover:underline">
+            <Link href={`/admin/day?d=${date}&c=${center}`} className="-me-2 inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-semibold text-brand hover:bg-brand-soft">
               كل إدخالات اليوم
             </Link>
           </div>

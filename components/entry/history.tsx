@@ -2,7 +2,7 @@
 
 import { PenLine, Store, Stethoscope } from "lucide-react";
 import type { Db, Entry } from "@/lib/types";
-import { centerName, projectName, userName } from "@/lib/queries";
+import { centerName, correctionText, projectName, userName } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
 import { cn, dayFull, formatTime } from "@/lib/utils";
 
@@ -84,7 +84,7 @@ export function HistoryRow({
             title={`كان: ${e.corrected.from.map((p) => projectName(db, p)).join("، ")}`}
           >
             <PenLine className="size-3" />
-            عُدّل التوجيه من {e.corrected.from.map((p) => projectName(db, p)).join("، ")}
+            {correctionText(db, e.corrected)}
           </span>
         )}
       </span>

@@ -34,6 +34,14 @@ export type AddEntryResult =
   | { ok: true; mode: "created" | "updated"; entry: Entry; isNew: boolean; skipped: string[]; added: string[] }
   | { ok: false; error: string };
 
+export interface ReferInput {
+  nid: string;
+  projects: string[];
+  deleteEntryIds: string[];
+  name?: string;
+  type?: IdType;
+}
+
 export interface AddEntryInput {
   nid: string;
   projects: string[];
@@ -62,6 +70,8 @@ export interface Ctx {
   updateEntryProjects: (entryId: string, projects: string[]) => Promise<string | null>;
   deleteEntry: (entryId: string) => Promise<string | null>;
   correctRouting: (receptionEntryId: string, projects: string[], deleteEntryIds: string[]) => Promise<string | null>;
+  /** النقطة: تصحيح التوجيه، أو إنشاء تحويل جديد باسم موظف النقطة إن لم تمر الحالة على الاستقبال */
+  referFromPoint: (input: ReferInput) => Promise<{ error?: string; queue?: Record<string, number>; created?: boolean }>;
   moveEntry: (entryId: string, newNid: string) => Promise<string | null>;
 
   saveUser: (u: User) => Promise<string | null>;
@@ -418,6 +428,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [rpc, after],
   );
 
+  const referFromPoint = useCallback(
+    async (input: ReferInput) => {
+      if (!input.projects.length) return { error: "اختر المشروع الصحيح" };
+      const c = centerRef.current;
+      if (!c) return { error: "انتهت الجلسة، سجّل الدخول من جديد" };
+      const r = await rpc<{ queue: Record<string, number>; created: boolean }>("refer_from_point", {
+        p_nid: input.nid,
+        p_center: c,
+        p_projects: input.projects,
+        p_name: input.name?.trim() || null,
+        p_type: input.type ?? null,
+        p_delete: input.deleteEntryIds,
+      });
+      if (r.error || !r.data) return { error: r.error ?? "تعذّر التحويل" };
+      if (input.deleteEntryIds.length) setDb((d) => ({ ...d, entries: d.entries.filter((e) => !input.deleteEntryIds.includes(e.id)) }));
+      await after([input.nid]);
+      return { queue: r.data.queue, created: r.data.created };
+    },
+    [rpc, after],
+  );
+
   const moveEntry = useCallback(
     async (entryId: string, newNid: string) => {
       const old = nidOf(entryId);
@@ -512,10 +543,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
-      addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry,
+      addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
       saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings,
     }),
-    [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
+    [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

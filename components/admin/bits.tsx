@@ -98,7 +98,7 @@ export function ExportButton({ label, scope, size = "md" }: { label: string; sco
       onClick={() => toast(`تصدير ${scope} إلى Excel قيد التجهيز وسيتوفر قريباً`, "info")}
       className={cn(
         "focus-ring inline-flex items-center gap-2 rounded-xl border border-ok/40 bg-ok-soft font-bold text-ok hover:bg-ok/15",
-        size === "sm" ? "px-2.5 py-1 text-xs" : "px-4 py-2.5 text-sm",
+        size === "sm" ? "min-h-9 px-2.5 py-1 text-xs" : "px-4 py-2.5 text-sm",
       )}
     >
       <FileSpreadsheet className={size === "sm" ? "size-3.5" : "size-4"} />

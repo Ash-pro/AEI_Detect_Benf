@@ -77,7 +77,7 @@ export function projectQueue(db: Db, center: CenterCode, project: string, date =
     const n = rec.queue?.[project];
     if (n) {
       const served = servedFor(db, rec, project);
-      const movedFrom = rec.corrected && !rec.corrected.from.includes(project) ? rec.corrected.from : undefined;
+      const movedFrom = rec.corrected && rec.corrected.from.length && !rec.corrected.from.includes(project) ? rec.corrected.from : undefined;
       items.push({ reception: rec, project, number: n, status: served ? "served" : "wait", served, movedFrom });
       continue;
     }

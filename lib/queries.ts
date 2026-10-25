@@ -67,7 +67,10 @@ export interface StaffStats {
 }
 
 export function staffStats(db: Db, user: SessionUser, center: CenterCode, date = todayKey()): StaffStats {
-  const mine = db.entries.filter((e) => e.userId === user.id && e.date === date && e.center === center);
+  // النقطة: الخدمات فقط (التحويلات التي ينشئها موظف النقطة لا تُحسب خدمة)
+  const mine = db.entries.filter(
+    (e) => e.userId === user.id && e.date === date && e.center === center && (user.role !== "POINT" || e.kind === "POINT"),
+  );
   const counts = new Map<string, number>();
   mine.forEach((e) => e.projects.forEach((p) => counts.set(p, (counts.get(p) ?? 0) + 1)));
   const cases = user.role === "POINT" ? new Set(mine.map((e) => e.nid)).size : mine.length;
@@ -224,4 +227,10 @@ export function adminShareText(db: Db, s: DayStats, center: CenterFilter): strin
 export function lastActivity(db: Db, userId: string): string | undefined {
   for (let i = db.entries.length - 1; i >= 0; i--) if (db.entries[i].userId === userId) return db.entries[i].at;
   return undefined;
+}
+
+/** نص ملاحظة التوجيه: تصحيح من مشروع، أو تحويل أنشأه موظف نقطة */
+export function correctionText(db: Db, c: NonNullable<Entry["corrected"]>, withBy = false): string {
+  if (!c.from.length) return `حوّلها موظف النقطة ${userName(db, c.by)}`;
+  return `عُدّل التوجيه من ${c.from.map((p) => projectName(db, p)).join("، ")}${withBy ? ` بواسطة ${userName(db, c.by)}` : ""}`;
 }

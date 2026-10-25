@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Download, Eye, EyeOff, LogIn, TimerOff } from "lucide-react";
@@ -24,8 +24,10 @@ function LoginInner() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<{ u?: string; p?: string; form?: string }>({});
   const [busy, setBusy] = useState(false);
+  const uRef = useRef<HTMLInputElement>(null);
+  const pRef = useRef<HTMLInputElement>(null);
   const { mode } = useSiteMode();
 
   useEffect(() => {
@@ -37,11 +39,25 @@ function LoginInner() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if (!username || !password) return setError("أدخل اسم المستخدم وكلمة المرور");
+    const next = {
+      u: username.trim() ? undefined : "أدخل اسم المستخدم",
+      p: password ? undefined : "أدخل كلمة المرور",
+    };
+    if (next.u || next.p) {
+      setErrors(next);
+      (next.u ? uRef : pRef).current?.focus();
+      return;
+    }
     setBusy(true);
-    const r = await login(username, password);
+    const r = await login(username.trim(), password);
     setBusy(false);
-    if (r.error) return setError(r.error);
+    if (r.error) {
+      // خطأ في بيانات الدخول: لا نعرف أيهما الخاطئ، فنميّز الخانتين ونركّز على كلمة المرور
+      const cred = /غير صحيحة|incorrect|invalid/i.test(r.error);
+      setErrors(cred ? { u: " ", p: " ", form: r.error } : { form: r.error });
+      if (cred) pRef.current?.select();
+      return;
+    }
     router.replace(homePath(r.user!.role));
   }
 
@@ -64,7 +80,7 @@ function LoginInner() {
               <span className={cn("size-2 rounded-full", st.dot)} />
               {centerName(db, center)}
             </span>
-            <Link href="/setup" className="text-sm font-semibold text-brand hover:underline">
+            <Link href="/setup" className="focus-ring -me-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-brand hover:bg-brand-soft">
               تغيير المركز
             </Link>
           </div>
@@ -75,8 +91,12 @@ function LoginInner() {
             <div>
               <Label htmlFor="u">اسم المستخدم</Label>
               <Input
+                ref={uRef}
                 id="u"
                 autoFocus
+                invalid={Boolean(errors.u)}
+                aria-invalid={Boolean(errors.u)}
+                aria-describedby={errors.u?.trim() ? "u-err" : undefined}
                 autoComplete="username"
                 autoCapitalize="none"
                 dir="ltr"
@@ -84,24 +104,28 @@ function LoginInner() {
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value);
-                  setError("");
+                  setErrors((x) => ({ ...x, u: undefined, form: undefined }));
                 }}
               />
+              {errors.u?.trim() && <FieldError id="u-err">{errors.u}</FieldError>}
             </div>
             <div>
               <Label htmlFor="p">كلمة المرور</Label>
               <div className="relative">
                 <Input
+                  ref={pRef}
                   id="p"
+                  aria-invalid={Boolean(errors.p)}
+                  aria-describedby={errors.p?.trim() ? "p-err" : undefined}
                   type={show ? "text" : "password"}
                   autoComplete="current-password"
                   dir="ltr"
                   className="pl-12 text-start"
                   value={password}
-                  invalid={Boolean(error)}
+                  invalid={Boolean(errors.p)}
                   onChange={(e) => {
                     setPassword(e.target.value);
-                    setError("");
+                    setErrors((x) => ({ ...x, p: undefined, form: undefined }));
                   }}
                 />
                 <button
@@ -113,8 +137,13 @@ function LoginInner() {
                   {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
-              <FieldError>{error}</FieldError>
+              {errors.p?.trim() && <FieldError id="p-err">{errors.p}</FieldError>}
             </div>
+            {errors.form && (
+              <p role="alert" className="rounded-xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">
+                {errors.form}
+              </p>
+            )}
           </div>
 
           <Button type="submit" size="lg" block className="mt-6" disabled={busy}>
@@ -152,7 +181,7 @@ function LoginInner() {
                 onClick={() => {
                   setUsername(u);
                   setPassword("1234");
-                  setError("");
+                  setErrors({});
                 }}
                 className="focus-ring rounded-xl bg-surface px-3 py-2 text-start text-sm shadow-card hover:bg-sunken"
               >

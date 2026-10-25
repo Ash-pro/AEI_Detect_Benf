@@ -1,19 +1,47 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, History, Lock, PenLine, Pencil, Search, Share2 } from "lucide-react";
+import {
+  ArrowDownWideNarrow,
+  ArrowUpWideNarrow,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  ListOrdered,
+  Lock,
+  PenLine,
+  Pencil,
+  Search,
+  Share2,
+  X,
+} from "lucide-react";
 import { ProjectChip } from "./history";
 import { IdTypeTag } from "./id-fields";
 import { EntryEditor } from "./edit-dialog";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { activeProjects, projectName, staffStats, type StaffStats } from "@/lib/queries";
+import { activeProjects, correctionText, projectName, staffStats, type StaffStats } from "@/lib/queries";
 import { lastNumber, pointQueue } from "@/lib/queue";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import type { CenterCode, Db, Entry, SessionUser } from "@/lib/types";
-import { addDays, casesText, cn, dayFull, dayNum, formatTime, monthKey, monthLabel, normalizeArabicName, normalizeDigits, todayKey, weekday } from "@/lib/utils";
+import { addDays, cn, dayFull, dayNum, formatTime, monthKey, monthLabel, normalizeArabicName, normalizeDigits, todayKey, weekday } from "@/lib/utils";
 
 const RECENT_DAYS = 30;
+
+type SortMode = "queue" | "new" | "old";
+const SORTS: { value: SortMode; label: string; icon: typeof ListOrdered }[] = [
+  { value: "queue", label: "حسب الدور", icon: ListOrdered },
+  { value: "new", label: "الأحدث", icon: ArrowDownWideNarrow },
+  { value: "old", label: "الأقدم", icon: ArrowUpWideNarrow },
+];
+
+interface QueueRow {
+  e: Entry;
+  project: string;
+  number?: number;
+}
 
 /** سجل إدخالات الموظف بالأيام: قائمة جانبية بالأيام + إدخالات اليوم المختار */
 export function DayLog({
@@ -37,34 +65,36 @@ export function DayLog({
   const [project, setProject] = useState("");
   const [sort, setSort] = useState<SortMode>("queue");
   const [edit, setEdit] = useState<Entry | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   /* كل إدخالات الموظف في هذا المركز */
   const mine = useMemo(() => db.entries.filter((e) => e.userId === user.id && e.center === center), [db, user.id, center]);
 
   /* الأيام: اليوم دائماً أولاً، ثم أيام العمل الأحدث فالأقدم */
   const days = useMemo(() => {
-    const m = new Map<string, number>();
-    mine.forEach((e) => m.set(e.date, (m.get(e.date) ?? 0) + 1));
-    if (isPoint) {
-      // النقطة: عدد الحالات = عدد الهويات المخدومة
-      const sets = new Map<string, Set<string>>();
-      mine.forEach((e) => (sets.get(e.date) ?? sets.set(e.date, new Set()).get(e.date)!).add(e.nid));
-      sets.forEach((s, d) => m.set(d, s.size));
-    }
-    if (!m.has(today)) m.set(today, 0);
-    return Array.from(m.entries())
-      .map(([d, count]) => ({ date: d, count }))
+    const sets = new Map<string, Set<string>>();
+    mine.forEach((e) => {
+      if (!sets.has(e.date)) sets.set(e.date, new Set());
+      sets.get(e.date)!.add(isPoint ? e.nid : e.id);
+    });
+    if (!sets.has(today)) sets.set(today, new Set());
+    return Array.from(sets.entries())
+      .map(([d, s]) => ({ date: d, count: s.size }))
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [mine, today, isPoint]);
 
   const cutoff = addDays(today, -RECENT_DAYS);
   const visible = showOld ? days : days.filter((d) => d.date >= cutoff);
   const hiddenOld = days.length - days.filter((d) => d.date >= cutoff).length;
+  const maxCount = Math.max(1, ...visible.map((d) => d.count));
 
   useEffect(() => {
     setQ("");
     setProject("");
   }, [date]);
+  /* اليوم المزدحم: نفتح أول مشروع فقط حتى تبقى القائمة قصيرة، والباقي بضغطة */
+  const autoKey = `${date}|${center}`;
+  const [autoFor, setAutoFor] = useState("");
 
   const dayEntries = useMemo(() => mine.filter((e) => e.date === date), [mine, date]);
   const stats = useMemo(() => staffStats(db, user, center, date), [db, user, center, date]);
@@ -72,6 +102,11 @@ export function DayLog({
     const set = new Set(dayEntries.flatMap((e) => e.projects));
     return [...db.projects].sort((a, b) => a.order - b.order).map((p) => p.code).filter((c) => set.has(c));
   }, [dayEntries, db.projects]);
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    dayEntries.forEach((e) => e.projects.forEach((p) => m.set(p, (m.get(p) ?? 0) + 1)));
+    return m;
+  }, [dayEntries]);
 
   const list = useMemo(() => {
     const digits = normalizeDigits(q);
@@ -100,17 +135,41 @@ export function DayLog({
       })
       .filter((g) => g.items.length);
   }, [sort, project, dayProjects, list, isPoint, db]);
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    dayEntries.forEach((e) => e.projects.forEach((p) => m.set(p, (m.get(p) ?? 0) + 1)));
-    return m;
-  }, [dayEntries]);
+
+  useEffect(() => {
+    if (autoFor === autoKey || sort !== "queue" || !groups.length) return;
+    setAutoFor(autoKey);
+    const total = groups.reduce((n, g) => n + g.items.length, 0);
+    setCollapsed(new Set(total > 15 ? groups.slice(1).map((g) => g.code) : []));
+  }, [autoFor, autoKey, sort, groups]);
+  const allOpen = groups.every((g) => !collapsed.has(g.code));
 
   const isToday = date === today;
   const months = Array.from(new Set(visible.map((d) => monthKey(d.date))));
+  const idx = days.findIndex((d) => d.date === date);
+  const newer = idx > 0 ? days[idx - 1].date : null;
+  const older = idx >= 0 && idx < days.length - 1 ? days[idx + 1].date : null;
+  const goto = (d: string) => {
+    if (d < cutoff) setShowOld(true);
+    setDate(d);
+  };
+
+  const kpis = isPoint
+    ? [
+        { label: "حالات خدمتها", value: stats.total, cls: "text-ok" },
+        { label: "من قائمة الانتظار", value: stats.fromQueue, cls: "text-ink" },
+        { label: "بدون دور", value: stats.noQueue, cls: "text-muted" },
+        { label: "جديدة على النظام", value: stats.isNew, cls: "text-info" },
+      ]
+    : [
+        { label: "حالات الاستقبال", value: stats.total, cls: "text-ink" },
+        { label: "جديدة", value: stats.isNew, cls: "text-info" },
+        { label: "متكررة", value: stats.repeat, cls: "text-muted" },
+      ];
+  const typesLine = !isPoint && stats.types.length ? stats.types.map((t) => `${t.label} ${t.count}`).join(" · ") : "";
 
   return (
-    <div className="animate-fade-up grid gap-4 md:grid-cols-[210px_minmax(0,1fr)]">
+    <div className="animate-fade-up grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
       {/* ===== الأيام ===== */}
       <aside aria-label="الأيام" className="min-w-0">
         {/* الجوال: شريط أفقي */}
@@ -119,8 +178,9 @@ export function DayLog({
             <button
               key={d.date}
               onClick={() => setDate(d.date)}
+              aria-current={d.date === date ? "date" : undefined}
               className={cn(
-                "flex shrink-0 flex-col items-center rounded-xl border px-3 py-1.5 text-sm font-bold",
+                "flex min-h-12 shrink-0 flex-col items-center justify-center rounded-xl border px-3 text-sm font-bold",
                 d.date === date ? "border-brand bg-brand text-brand-ink" : "border-line bg-surface",
               )}
             >
@@ -131,45 +191,52 @@ export function DayLog({
             </button>
           ))}
           {!showOld && hiddenOld > 0 && (
-            <button onClick={() => setShowOld(true)} className="shrink-0 rounded-xl border border-dashed border-line px-3 text-sm font-bold text-brand">
+            <button onClick={() => setShowOld(true)} className="min-h-12 shrink-0 rounded-xl border border-dashed border-line px-3 text-sm font-bold text-brand">
               أيام أقدم
             </button>
           )}
         </div>
 
-        {/* الشاشات الأكبر: قائمة جانبية */}
-        <Card className="sticky top-24 hidden overflow-hidden md:block">
+        {/* الشاشات الأكبر: قائمة جانبية مع مؤشر حجم العمل لكل يوم */}
+        <Card className="sticky top-[150px] hidden overflow-hidden md:block">
           <div className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm font-bold">
             <CalendarDays className="size-4 text-brand" />
             الأيام
+            <span className="ms-auto text-xs font-semibold text-muted">{isPoint ? "حالة" : "إدخال"}</span>
           </div>
-          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+          <div className="max-h-[calc(100vh-280px)] overflow-y-auto">
             {months.map((mk) => (
               <div key={mk}>
-                <div className="bg-sunken px-4 py-1.5 text-xs font-semibold text-muted">{monthLabel(mk)}</div>
+                <div className="sticky top-0 z-10 bg-sunken px-4 py-1.5 text-xs font-semibold text-muted">{monthLabel(mk)}</div>
                 <ul>
                   {visible
                     .filter((d) => monthKey(d.date) === mk)
-                    .map((d) => (
-                      <li key={d.date}>
-                        <button
-                          onClick={() => setDate(d.date)}
-                          aria-current={d.date === date ? "date" : undefined}
-                          className={cn(
-                            "flex w-full items-center justify-between gap-2 border-s-4 px-3.5 py-2.5 text-start text-sm transition",
-                            d.date === date ? "border-brand bg-brand-soft font-bold text-brand" : "border-transparent hover:bg-sunken/60",
-                          )}
-                        >
-                          <span>
-                            {d.date === today ? "اليوم · " : ""}
-                            {weekday(d.date)} <span className="num">{dayNum(d.date)}</span>
-                          </span>
-                          <span className={cn("num rounded-full px-2 text-xs leading-5", d.date === date ? "bg-brand text-brand-ink" : "bg-sunken text-muted")}>
-                            {d.count}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
+                    .map((d) => {
+                      const on = d.date === date;
+                      return (
+                        <li key={d.date}>
+                          <button
+                            onClick={() => setDate(d.date)}
+                            aria-current={on ? "date" : undefined}
+                            className={cn(
+                              "relative flex w-full items-center gap-2 border-s-4 px-3.5 py-2.5 text-start text-sm transition",
+                              on ? "border-brand bg-brand-soft font-bold text-brand" : "border-transparent hover:bg-sunken/60",
+                            )}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate">
+                                {d.date === today ? "اليوم · " : ""}
+                                {weekday(d.date)} <span className="num">{dayNum(d.date)}</span>
+                              </span>
+                              <span className="mt-1 block h-1 overflow-hidden rounded-full bg-line/70">
+                                <span className={cn("block h-full rounded-full", on ? "bg-brand" : "bg-muted/40")} style={{ width: `${(d.count / maxCount) * 100}%` }} />
+                              </span>
+                            </span>
+                            <span className={cn("num w-8 shrink-0 text-end text-sm font-bold", on ? "text-brand" : "text-muted")}>{d.count}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
                 </ul>
               </div>
             ))}
@@ -177,7 +244,7 @@ export function DayLog({
           {hiddenOld > 0 && (
             <button
               onClick={() => setShowOld((v) => !v)}
-              className="flex w-full items-center justify-center gap-1.5 border-t border-line px-4 py-2.5 text-sm font-bold text-brand hover:bg-sunken/60"
+              className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t border-line px-4 py-2.5 text-sm font-bold text-brand hover:bg-sunken/60"
             >
               <History className="size-4" />
               {showOld ? `آخر ${RECENT_DAYS} يوماً فقط` : `أيام أقدم (${hiddenOld})`}
@@ -188,129 +255,220 @@ export function DayLog({
 
       {/* ===== إدخالات اليوم المختار ===== */}
       <Card className="min-w-0 overflow-hidden">
-        <div className="border-b border-line px-4 pb-3 pt-4 sm:px-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold">
-                {isToday && <span className="me-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 text-sm text-brand">اليوم</span>}
+        <div className="space-y-4 border-b border-line px-4 pb-4 pt-4 sm:px-5">
+          {/* العنوان والتنقل بين الأيام */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => newer && goto(newer)}
+              disabled={!newer}
+              aria-label="اليوم التالي"
+              title="اليوم التالي"
+              className="focus-ring grid size-10 shrink-0 place-items-center rounded-xl border border-line text-muted hover:bg-sunken hover:text-ink disabled:opacity-30"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+            <div className="min-w-0 flex-1 text-center sm:text-start">
+              <h2 className="truncate text-lg font-bold">
                 {weekday(date)} <span className="num">{dayFull(date)}</span>
               </h2>
-              <p className="mt-0.5 text-sm text-muted">{isPoint ? `${casesText(stats.total)} خدمتها` : `${casesText(stats.total)} في الاستقبال`}</p>
+              <p className="text-xs text-muted">
+                {isToday ? <span className="font-bold text-brand">اليوم · </span> : null}
+                {isToday ? "إدخالاتك حتى الآن" : "للعرض فقط"}
+                {typesLine && <span className="num"> · {typesLine}</span>}
+              </p>
             </div>
+            <button
+              onClick={() => older && goto(older)}
+              disabled={!older}
+              aria-label="اليوم السابق"
+              title="اليوم السابق"
+              className="focus-ring grid size-10 shrink-0 place-items-center rounded-xl border border-line text-muted hover:bg-sunken hover:text-ink disabled:opacity-30"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
             <button
               onClick={() => onShare(date, stats)}
               disabled={!dayEntries.length}
-              className="focus-ring inline-flex items-center gap-2 rounded-xl border border-[#128c4a]/40 bg-[#e7f6ec] px-3 py-2 text-sm font-bold text-[#0f6b38] hover:bg-[#d6efdf] disabled:opacity-40"
+              aria-label="مشاركة إحصائيات هذا اليوم"
+              title="مشاركة إحصائيات هذا اليوم"
+              className="focus-ring inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-[#128c4a]/40 bg-[#e7f6ec] px-3 text-sm font-bold text-[#0f6b38] hover:bg-[#d6efdf] disabled:opacity-40"
             >
               <Share2 className="size-4" />
-              مشاركة إحصائيات هذا اليوم
+              <span className="hidden lg:inline">مشاركة</span>
             </button>
           </div>
 
-          <DaySummary db={db} stats={stats} isPoint={isPoint} center={center} date={date} />
+          {/* المؤشرات */}
+          <div className={cn("grid gap-2", isPoint ? "grid-cols-4" : "grid-cols-3")}>
+            {kpis.map((k) => (
+              <div key={k.label} className="min-w-0 rounded-xl bg-sunken px-2.5 py-2 sm:px-3">
+                <div className={cn("num text-lg font-bold leading-tight sm:text-xl", k.cls)}>{k.value}</div>
+                <div className="truncate text-[11px] font-semibold text-muted" title={k.label}>
+                  {k.label}
+                </div>
+              </div>
+            ))}
+          </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[180px] flex-1">
+          {/* البحث والترتيب */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[200px] flex-1">
               <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
               <input
                 aria-label="بحث في إدخالات اليوم"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="بحث برقم الهوية أو الاسم"
-                className="h-10 w-full rounded-xl border border-line bg-surface ps-9 pe-3 text-sm outline-hidden focus:border-brand"
+                className="h-11 w-full rounded-xl border border-line bg-surface ps-9 pe-9 text-sm outline-hidden focus:border-brand"
               />
+              {q && (
+                <button
+                  onClick={() => setQ("")}
+                  aria-label="مسح البحث"
+                  className="absolute end-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-sunken"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
             </div>
-            <div role="radiogroup" aria-label="الترتيب" className="flex h-10 rounded-xl bg-sunken p-1">
+            <div role="radiogroup" aria-label="الترتيب" className="flex h-11 rounded-xl bg-sunken p-1">
               {SORTS.map((o) => (
                 <button
                   key={o.value}
                   role="radio"
                   aria-checked={sort === o.value}
                   onClick={() => setSort(o.value)}
+                  title={o.label}
                   className={cn(
-                    "rounded-lg px-2.5 text-sm font-bold transition",
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 text-sm font-bold transition",
                     sort === o.value ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink",
                   )}
                 >
-                  {o.label}
+                  <o.icon className="size-4" />
+                  <span className={o.value === "queue" ? "" : "hidden sm:inline"}>{o.label}</span>
                 </button>
               ))}
             </div>
           </div>
-          {dayProjects.length > 1 && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {["", ...dayProjects].map((p) => (
-                <button
-                  key={p || "all"}
-                  onClick={() => setProject(p)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-bold",
-                    project === p ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface text-muted hover:text-ink",
-                  )}
-                  style={p && project === p ? { borderColor: projectColor(db, p), background: projectSoft(projectColor(db, p)), color: projectColor(db, p) } : undefined}
-                >
-                  {p && <span className="size-2 rounded-full" style={{ background: projectColor(db, p) }} aria-hidden />}
-                  {p ? projectName(db, p) : "كل المشاريع"}
-                  {p && <span className="num font-semibold opacity-70"> {counts.get(p)}</span>}
-                </button>
+
+          {/* المشاريع: فلتر وملخص في صف واحد */}
+          {dayProjects.length > 0 && (
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 sm:-mx-5 sm:px-5">
+              <FilterChip on={!project} onClick={() => setProject("")} label="كل المشاريع" count={dayEntries.length} />
+              {dayProjects.map((p) => (
+                <FilterChip
+                  key={p}
+                  on={project === p}
+                  onClick={() => setProject(project === p ? "" : p)}
+                  label={projectName(db, p)}
+                  count={counts.get(p) ?? 0}
+                  color={projectColor(db, p)}
+                  sub={!isPoint ? `آخر دور ${lastNumber(db, center, p, date)}` : undefined}
+                />
               ))}
             </div>
           )}
         </div>
 
+        {/* رؤوس الأعمدة على الشاشات الكبيرة */}
+        {list.length > 0 && (
+          <div className="hidden border-b border-line bg-sunken/50 px-5 py-2 text-xs font-semibold text-muted md:grid md:grid-cols-[76px_minmax(0,1fr)_120px_64px_minmax(0,0.9fr)_84px] md:items-center md:gap-3">
+            <span>{sort === "queue" ? "الدور" : "الوقت"}</span>
+            <span>المستفيد</span>
+            <span>رقم الهوية</span>
+            <span>{sort === "queue" ? "الوقت" : ""}</span>
+            <span>{sort === "queue" ? (isPoint ? "" : "محوّلة أيضاً إلى") : "المشاريع والدور"}</span>
+            <span className="text-end">
+              {sort === "queue" && groups.length > 1 && (
+                <button
+                  onClick={() => setCollapsed(new Set(allOpen ? groups.map((g) => g.code) : []))}
+                  className="rounded-md px-1.5 py-0.5 font-bold text-brand hover:bg-brand-soft"
+                >
+                  {allOpen ? "طيّ الكل" : "فتح الكل"}
+                </button>
+              )}
+            </span>
+          </div>
+        )}
+
         {list.length && sort === "queue" ? (
           <div>
-            {groups.map((g) => (
-              <section key={g.code} aria-label={`دور ${projectName(db, g.code)}`}>
-                <div
-                  className="flex items-center justify-between gap-2 border-y border-s-[6px] border-line px-4 py-2 sm:px-5"
-                  style={{ background: projectSoft(projectColor(db, g.code)), borderInlineStartColor: projectColor(db, g.code) }}
+            {groups.length > 1 && (
+              <div className="flex items-center justify-between border-b border-line px-4 py-2 text-xs text-muted sm:px-5 md:hidden">
+                <span>{groups.length} مشاريع</span>
+                <button
+                  onClick={() => setCollapsed(new Set(allOpen ? groups.map((g) => g.code) : []))}
+                  className="min-h-9 rounded-lg px-2 font-bold text-brand hover:bg-brand-soft"
                 >
-                  <span className="flex items-center gap-2 font-bold" style={{ color: projectColor(db, g.code) }}>
-                    <span className="size-3 rounded-full" style={{ background: projectColor(db, g.code) }} aria-hidden />
-                    دور {projectName(db, g.code)}
-                  </span>
-                  <span className="text-xs font-semibold text-muted">
-                    {casesText(g.items.length)}
+                  {allOpen ? "طيّ الكل" : "فتح الكل"}
+                </button>
+              </div>
+            )}
+            {groups.map((g) => {
+              const c = projectColor(db, g.code);
+              const closed = collapsed.has(g.code);
+              return (
+                <section key={g.code} aria-label={`دور ${projectName(db, g.code)}`}>
+                  <button
+                    onClick={() =>
+                      setCollapsed((s) => {
+                        const n = new Set(s);
+                        if (n.has(g.code)) n.delete(g.code);
+                        else n.add(g.code);
+                        return n;
+                      })
+                    }
+                    aria-expanded={!closed}
+                    className="flex w-full items-center gap-2 border-b border-s-[6px] border-line px-4 py-2.5 text-start sm:px-5"
+                    style={{ background: projectSoft(c), borderInlineStartColor: c }}
+                  >
+                    <span className="size-3 shrink-0 rounded-full" style={{ background: c }} aria-hidden />
+                    <span className="font-bold" style={{ color: c }}>
+                      دور {projectName(db, g.code)}
+                    </span>
+                    <span className="num rounded-full bg-surface px-2 text-xs font-bold leading-5 text-ink">{g.items.length}</span>
                     {!isPoint && (
-                      <>
-                        {" "}· آخر دور <span className="num">{lastNumber(db, center, g.code, date)}</span>
-                      </>
+                      <span className="text-xs font-semibold text-muted">
+                        آخر دور <span className="num">{lastNumber(db, center, g.code, date)}</span>
+                      </span>
                     )}
-                  </span>
-                </div>
-                <ul className="divide-y divide-line/60">
-                  {g.items.map((r) => (
-                    <QueueLogRow
-                      key={r.e.id + r.project}
-                      row={r}
-                      db={db}
-                      isPoint={isPoint}
-                      canEdit={isToday}
-                      onOpen={() => onOpen(r.e.nid)}
-                      onEdit={() => setEdit(r.e)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ))}
+                    <ChevronDown className={cn("ms-auto size-4 text-muted transition", closed && "-rotate-90")} />
+                  </button>
+                  {!closed && (
+                    <ul className="divide-y divide-line/60">
+                      {g.items.map((r) => (
+                        <Row key={r.e.id + r.project} e={r.e} db={db} isPoint={isPoint} canEdit={isToday} mode="queue" project={r.project} number={r.number} onOpen={() => onOpen(r.e.nid)} onEdit={() => setEdit(r.e)} />
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              );
+            })}
           </div>
         ) : list.length ? (
           <ul className="divide-y divide-line/60">
             {list.map((e) => (
-              <LogRow key={e.id} e={e} db={db} isPoint={isPoint} canEdit={isToday} onOpen={() => onOpen(e.nid)} onEdit={() => setEdit(e)} />
+              <Row key={e.id} e={e} db={db} isPoint={isPoint} canEdit={isToday} mode="time" onOpen={() => onOpen(e.nid)} onEdit={() => setEdit(e)} />
             ))}
           </ul>
         ) : (
-          <p className="px-5 py-14 text-center text-sm text-muted">
-            {dayEntries.length ? "لا نتائج مطابقة" : isToday ? "لا توجد إدخالات لك اليوم بعد" : "لا توجد إدخالات في هذا اليوم"}
-          </p>
+          <div className="flex flex-col items-center gap-2 px-5 py-16 text-center">
+            <CalendarDays className="size-9 text-muted/60" />
+            <p className="font-semibold text-muted">
+              {dayEntries.length ? "لا نتائج مطابقة للبحث" : isToday ? "لا توجد إدخالات لك اليوم بعد" : "لا توجد إدخالات في هذا اليوم"}
+            </p>
+            {dayEntries.length > 0 && (
+              <button onClick={() => { setQ(""); setProject(""); }} className="text-sm font-bold text-brand hover:underline">
+                مسح البحث والفلتر
+              </button>
+            )}
+          </div>
         )}
 
         <p className="flex gap-2 border-t border-line px-5 py-3 text-xs text-muted">
           {isToday ? <Pencil className="size-4 shrink-0" /> : <Lock className="size-4 shrink-0" />}
           {isToday
-            ? "إدخالات اليوم: تعدّلها أو تحذفها من زر القلم. الضغط على السطر يفتح بطاقة الهوية."
+            ? "الضغط على السطر يفتح بطاقة الهوية، وزر القلم لتعديل إدخالك أو حذفه."
             : "الأيام السابقة للعرض فقط. التعديل عليها للأدمن من سجل الأيام."}
         </p>
       </Card>
@@ -320,7 +478,7 @@ export function DayLog({
           <EntryEditor
             key={edit.id}
             entry={db.entries.find((x) => x.id === edit.id)!}
-            projects={isPoint ? activeProjects(db, center).filter((p) => user.projects.includes(p.code)) : activeProjects(db, center)}
+            projects={isPoint && edit.kind === "POINT" ? activeProjects(db, center).filter((p) => user.projects.includes(p.code)) : activeProjects(db, center)}
             onMoved={() => setEdit(null)}
           />
         ) : (
@@ -331,142 +489,37 @@ export function DayLog({
   );
 }
 
-type SortMode = "queue" | "new" | "old";
-const SORTS: { value: SortMode; label: string }[] = [
-  { value: "queue", label: "حسب الدور" },
-  { value: "new", label: "الأحدث" },
-  { value: "old", label: "الأقدم" },
-];
-
-interface QueueRow {
-  e: Entry;
-  project: string;
-  number?: number;
-}
-
-/** سطر في ترتيب الدور: رقم الدور + المشروع الذي سيخدم الحالة */
-function QueueLogRow({
-  row,
-  db,
-  isPoint,
-  canEdit,
-  onOpen,
-  onEdit,
-}: {
-  row: QueueRow;
-  db: Db;
-  isPoint: boolean;
-  canEdit: boolean;
-  onOpen: () => void;
-  onEdit: () => void;
-}) {
-  const { e, project, number } = row;
-  const b = db.beneficiaries[e.nid];
-  const others = isPoint ? [] : e.projects.filter((p) => p !== project);
-  const pq = isPoint ? pointQueue(db, e) : null;
-  const otherId = pq?.reception && pq.reception.nid !== e.nid;
+function FilterChip({ on, onClick, label, count, color, sub }: { on: boolean; onClick: () => void; label: string; count: number; color?: string; sub?: string }) {
   return (
-    <li className="flex items-center gap-1 pe-2">
-      <button onClick={onOpen} className="group flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-start hover:bg-sunken/50 sm:px-5">
-        <span
-          className={cn(
-            "flex w-16 shrink-0 flex-col items-center justify-center rounded-xl py-1.5 leading-none",
-            number ? "text-white" : "bg-sunken text-muted",
-          )}
-          style={number ? { background: projectColor(db, project) } : undefined}
-          title="رقم الدور في المشروع"
-        >
-          <span className="num text-xl font-bold">{number ?? "—"}</span>
-          <span className="mt-1 max-w-full truncate px-1 text-[10px] font-bold opacity-90">{number ? projectName(db, project) : "بدون دور"}</span>
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-1.5">
-            <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
-            <IdTypeTag type={b?.type} />
-            {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
-          </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-            <span className="num font-semibold tracking-wider text-ink/80">{e.nid}</span>
-            <span>
-              {isPoint ? "الخدمة" : "الاستقبال"} <span className="num">{formatTime(e.at)}</span>
-            </span>
-            {e.corrected && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
-                <PenLine className="size-3" />
-                عُدّل التوجيه من {e.corrected.from.map((p) => projectName(db, p)).join("، ")}
-              </span>
-            )}
-            {otherId && <span>على دور {db.beneficiaries[pq!.reception!.nid]?.name || pq!.reception!.nid} (بهوية أخرى)</span>}
-          </span>
-        </span>
-        {others.length > 0 && (
-          <span className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
-            <span className="text-[11px] text-muted">ومحوّلة أيضاً إلى</span>
-            <span className="flex flex-wrap justify-end gap-1">
-              {others.map((p) => (
-                <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
-              ))}
-            </span>
-          </span>
-        )}
-        <ChevronLeft className="hidden size-4 shrink-0 text-muted group-hover:text-brand sm:block" />
-      </button>
-      {canEdit && (
-        <button onClick={onEdit} aria-label="تعديل الإدخال" className="focus-ring grid size-9 shrink-0 place-items-center rounded-lg text-brand hover:bg-brand-soft">
-          <Pencil className="size-4" />
-        </button>
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      className={cn(
+        "focus-ring flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-start transition",
+        on ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-muted/40",
       )}
-    </li>
+      style={on && color ? { borderColor: color, background: projectSoft(color) } : undefined}
+    >
+      {color && <span className="size-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />}
+      <span className="leading-tight">
+        <span className={cn("block text-sm font-bold", on && !color && "text-brand")} style={on && color ? { color } : undefined}>
+          {label} <span className="num font-semibold text-muted">{count}</span>
+        </span>
+        {sub && <span className="num block text-[11px] font-semibold text-muted">{sub}</span>}
+      </span>
+    </button>
   );
 }
 
-function DaySummary({ db, stats, isPoint, center, date }: { db: Db; stats: StaffStats; isPoint: boolean; center: CenterCode; date: string }) {
-  const chips: { label: string; value: number | string; tone?: string }[] = isPoint
-    ? [
-        { label: "من قائمة الانتظار", value: stats.fromQueue, tone: "text-ok" },
-        { label: "بدون دور", value: stats.noQueue },
-        ...(stats.corrected ? [{ label: "صُحّح توجيهها", value: stats.corrected, tone: "text-warn" }] : []),
-        { label: "جديدة", value: stats.isNew, tone: "text-info" },
-      ]
-    : [
-        { label: "جديدة", value: stats.isNew, tone: "text-info" },
-        { label: "متكررة", value: stats.repeat },
-        ...stats.types.map((t) => ({ label: t.label, value: t.count })),
-      ];
-  const projects = stats.perProject.filter((p) => p.count);
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {chips.map((c) => (
-          <span key={c.label} className="rounded-lg bg-sunken px-2.5 py-1 text-xs font-semibold text-muted">
-            {c.label} <span className={cn("num font-bold text-ink", c.tone)}>{c.value}</span>
-          </span>
-        ))}
-      </div>
-      {projects.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {projects.map((p) => (
-            <span key={p.code} className="rounded-lg border border-line px-2.5 py-1 text-xs font-bold">
-              {p.name} <span className="num text-muted">{p.count}</span>
-              {!isPoint && (
-                <span className="font-semibold text-muted">
-                  {" "}
-                  · آخر دور <span className="num">{lastNumber(db, center, p.code, date)}</span>
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LogRow({
+/** سطر في السجل: أعمدة على الشاشات الكبيرة، وبطاقة مضغوطة على الجوال */
+function Row({
   e,
   db,
   isPoint,
   canEdit,
+  mode,
+  project,
+  number,
   onOpen,
   onEdit,
 }: {
@@ -474,51 +527,115 @@ function LogRow({
   db: Db;
   isPoint: boolean;
   canEdit: boolean;
+  mode: "queue" | "time";
+  project?: string;
+  number?: number;
   onOpen: () => void;
   onEdit: () => void;
 }) {
   const b = db.beneficiaries[e.nid];
   const pq = isPoint ? pointQueue(db, e) : null;
   const otherId = pq?.reception && pq.reception.nid !== e.nid;
+  const isReferral = isPoint && e.kind === "RECEPTION";
+  const others = mode === "queue" && !isPoint ? e.projects.filter((p) => p !== project) : [];
+  const color = project ? projectColor(db, project) : undefined;
+
+  const lead =
+    mode === "queue" ? (
+      <span
+        className={cn("flex h-12 w-[60px] shrink-0 flex-col items-center justify-center rounded-xl leading-none md:w-[76px]", number ? "text-white" : "bg-sunken text-muted")}
+        style={number ? { background: color } : undefined}
+        title={number ? `رقم الدور في ${projectName(db, project!)}` : "بدون دور"}
+      >
+        <span className="num text-xl font-bold">{number ?? "—"}</span>
+        <span className="mt-0.5 max-w-full truncate px-1 text-[10px] font-bold opacity-90">{number ? projectName(db, project!) : "بدون دور"}</span>
+      </span>
+    ) : (
+      <span className="num w-[60px] shrink-0 text-base font-bold md:w-[76px]">{formatTime(e.at)}</span>
+    );
 
   return (
-    <li className="flex items-center gap-1 pe-2">
-      <button onClick={onOpen} className="group flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start hover:bg-sunken/50 sm:px-5">
-        <span className="num w-12 shrink-0 font-bold">{formatTime(e.at)}</span>
+    <li className="group flex items-center gap-1 pe-2 hover:bg-sunken/40">
+      <button
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start sm:px-5 md:grid md:grid-cols-[76px_minmax(0,1fr)_120px_64px_minmax(0,0.9fr)] md:gap-3"
+      >
+        {lead}
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
             <IdTypeTag type={b?.type} />
             {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+            {isReferral && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">تحويل منك</span>}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+          {/* الجوال: الهوية والوقت تحت الاسم */}
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted md:hidden">
             <span className="num font-semibold tracking-wider text-ink/80">{e.nid}</span>
-            {e.corrected && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
-                <PenLine className="size-3" />
-                عُدّل التوجيه من {e.corrected.from.map((p) => projectName(db, p)).join("، ")}
+            {mode === "queue" && <span className="num">{formatTime(e.at)}</span>}
+            {others.map((p) => (
+              <span key={p} className="inline-flex items-center gap-1 font-semibold">
+                <span className="size-1.5 rounded-full" style={{ background: projectColor(db, p) }} aria-hidden />
+                {projectName(db, p)}
+                {e.queue?.[p] ? (
+                  <span className="num rounded px-1 text-[10px] leading-4 text-white" style={{ background: projectColor(db, p) }}>
+                    {e.queue[p]}
+                  </span>
+                ) : null}
               </span>
-            )}
-            {otherId && (
-              <span>
-                على دور {db.beneficiaries[pq!.reception!.nid]?.name || pq!.reception!.nid} (بهوية أخرى)
-              </span>
-            )}
+            ))}
           </span>
+          {(e.corrected || otherId) && (
+            <span className="mt-1 flex flex-wrap gap-1 text-[11px]">
+              {e.corrected && !isReferral && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 font-bold text-warn">
+                  <PenLine className="size-3" />
+                  {correctionText(db, e.corrected)}
+                </span>
+              )}
+              {otherId && (
+                <span className="rounded-md bg-sunken px-1.5 py-0.5 font-semibold text-muted">
+                  على دور {db.beneficiaries[pq!.reception!.nid]?.name || pq!.reception!.nid} (بهوية أخرى)
+                </span>
+              )}
+            </span>
+          )}
         </span>
-        <span className="flex shrink-0 flex-wrap justify-end gap-1">
-          {e.projects.map((p) => (
-            <ProjectChip key={p} db={db} code={p} number={isPoint ? pq?.number : e.queue?.[p]} />
+        <span className="num hidden text-sm font-semibold tracking-wider text-ink/80 md:block">{e.nid}</span>
+        <span className="num hidden text-sm text-muted md:block">{mode === "queue" ? formatTime(e.at) : ""}</span>
+        <span className="hidden flex-wrap gap-1 md:flex">
+          {mode === "time" &&
+            e.projects.map((p) => <ProjectChip key={p} db={db} code={p} number={isPoint ? pq?.number : e.queue?.[p]} />)}
+          {mode === "time" && isPoint && !pq?.number && !isReferral && (
+            <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-semibold text-muted">بدون دور</span>
+          )}
+          {others.map((p) => (
+            <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
           ))}
-          {isPoint && !pq?.number && <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-semibold text-muted">بدون دور</span>}
         </span>
-        <ChevronLeft className="hidden size-4 shrink-0 text-muted group-hover:text-brand sm:block" />
+        {/* الجوال: المشاريع في وضع الوقت */}
+        {mode === "time" && (
+          <span className="flex shrink-0 flex-col items-end gap-1 md:hidden">
+            {e.projects.map((p) => (
+              <ProjectChip key={p} db={db} code={p} number={isPoint ? pq?.number : e.queue?.[p]} />
+            ))}
+          </span>
+        )}
       </button>
-      {canEdit && (
-        <button onClick={onEdit} aria-label="تعديل الإدخال" className="focus-ring grid size-9 shrink-0 place-items-center rounded-lg text-brand hover:bg-brand-soft">
-          <Pencil className="size-4" />
+      <span className="flex w-[84px] shrink-0 items-center justify-end gap-1">
+        {canEdit && (
+          <button
+            onClick={onEdit}
+            aria-label="تعديل الإدخال"
+            title="تعديل الإدخال"
+            className="focus-ring grid size-10 place-items-center rounded-lg text-brand hover:bg-brand-soft"
+          >
+            <Pencil className="size-4" />
+          </button>
+        )}
+        <button onClick={onOpen} aria-label="فتح بطاقة الهوية" title="فتح بطاقة الهوية" className="focus-ring hidden size-10 place-items-center rounded-lg text-muted hover:bg-sunken hover:text-brand sm:grid">
+          <ChevronLeft className="size-4" />
         </button>
-      )}
+      </span>
     </li>
   );
 }

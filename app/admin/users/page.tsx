@@ -278,7 +278,7 @@ export default function UsersPage() {
                 {u.fullName.trim()[0]}
               </button>
               <div className="min-w-0 flex-1">
-                <button onClick={() => setViewing(u)} className="block text-start font-bold">
+                <button onClick={() => setViewing(u)} className="block min-h-8 text-start font-bold">
                   {u.fullName}
                 </button>
                 <div className="ltr text-start text-xs text-muted">{u.username}</div>

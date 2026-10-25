@@ -10,7 +10,7 @@ export function Switch({ checked, onChange, label, id, disabled }: { checked: bo
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cn("focus-ring relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40", checked ? "bg-brand" : "bg-line")}
+      className={cn("focus-ring relative inline-flex h-6 w-11 after:absolute after:-inset-x-1 after:-inset-y-2.5 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40", checked ? "bg-brand" : "bg-line")}
     >
       <span className={cn("absolute size-5 rounded-full bg-white shadow transition-all", checked ? "start-[22px]" : "start-0.5")} />
     </button>

@@ -35,9 +35,10 @@ export function PwaInstall() {
   const [hidden, setHidden] = useState(true);
   const [isIos, setIsIos] = useState(false);
   const [help, setHelp] = useState(false);
-  // الزر العائم في شاشتي المركز والدخول فقط، حتى لا يغطي شاشات العمل اليومية
+  // الزر العائم في شاشة اختيار المركز فقط: شاشة الدخول فيها زر تثبيت داخل النموذج،
+  // والعائم كان يغطي صندوق الحسابات التجريبية على الشاشات الصغيرة
   const path = usePathname();
-  const floating = path === "/login" || path === "/setup";
+  const floating = path === "/setup";
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {

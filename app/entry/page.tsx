@@ -81,7 +81,6 @@ function EntryScreen() {
     return m;
   }, [db, nid, today]);
   const todayHere = receptionToday.find((e) => e.center === c);
-  const routing = todayHere ?? receptionToday[0];
   const todayMine = useMemo(
     () => (nid ? db.entries.filter((e) => e.nid === nid && e.date === today && e.userId === u.id) : []),
     [db, nid, today, u.id],
@@ -331,7 +330,7 @@ function EntryScreen() {
             </>
           )}
 
-          {isPoint && <RoutingPanel reception={routing} user={u} center={c} onFix={() => setRoutingOpen(true)} />}
+          {isPoint && <RoutingPanel reception={todayHere} user={u} center={c} onFix={() => setRoutingOpen(true)} />}
 
           <fieldset>
             <legend className="mb-2.5 flex w-full flex-wrap items-baseline gap-x-2 text-sm font-bold">
@@ -405,13 +404,16 @@ function EntryScreen() {
         <RoutingDialog
           open={routingOpen}
           onClose={() => setRoutingOpen(false)}
-          reception={routing}
+          nid={nid}
+          name={name}
+          type={idType}
+          reception={todayHere}
           projects={allHere}
           myEntries={myPointToday}
-          onDone={(list) => {
+          onDone={(list, queue) => {
             setRoutingOpen(false);
-            const n = list.map((p) => projectName(db, p)).join("، ");
-            toast(`تم تعديل التوجيه إلى ${n} — وجّه المستفيد إلى نقطة ${n} برقم دوره الجديد`);
+            const n = list.map((p) => `${projectName(db, p)}${queue[p] ? ` (دور ${queue[p]})` : ""}`).join("، ");
+            toast(`تم التحويل إلى ${n} — وجّه المستفيد إلى نقطة المشروع`);
             setQueueRef(null);
             // بعد التصحيح: لا خدمة محددة إلا إذا بقيت الحالة محوّلة لمشروعي
             setSelected(list.some((p) => u.projects.includes(p)) ? projects.map((p) => p.code).filter((p) => list.includes(p) && !pointDoneToday.has(p)) : []);
@@ -539,7 +541,7 @@ function QueueRefBanner({ db, item, nid, onClear }: { db: Parameters<typeof proj
         <Link2 className="mt-0.5 size-3.5 shrink-0" />
         {other
           ? `ستُسجّل الخدمة بهوية ${nid} على دور ${b?.name || item.reception.nid}.`
-          : "إذا خدمت أحد الأطفال، اكتب هوية الطفل مكان هوية ولي الأمر ويبقى الدور مربوطاً."}
+          : "إذا خدمت شخصاً آخر من نفس الأسرة، اكتب هويته ويبقى الدور مربوطاً."}
       </p>
     </section>
   );

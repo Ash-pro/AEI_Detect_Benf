@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { HistoryRow, KindTag, ProjectChip } from "./history";
 import { IdTypeTag } from "./id-fields";
 import type { Beneficiary, Db, Entry } from "@/lib/types";
-import { centerName, projectName, userName } from "@/lib/queries";
+import { centerName, correctionText, userName } from "@/lib/queries";
 import { cn, dayFull, formatDate, formatTime, sinceText, todayKey, weekday } from "@/lib/utils";
 
 /** بطاقة الهوية: البيانات + آخر زيارة + سجل الزيارات + زر التعديل */
@@ -88,7 +88,7 @@ export function BeneficiaryCard({
             </span>
             {last.corrected && (
               <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
-                عُدّل التوجيه من {last.corrected.from.map((p) => projectName(db, p)).join("، ")} بواسطة {userName(db, last.corrected.by)}
+                {correctionText(db, last.corrected, true)}
               </span>
             )}
           </div>

@@ -16,7 +16,7 @@ import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatDate, formatTime, sinceText, todayKey, uuid } from "@/lib/utils";
 
 export const ROLE_META: Record<Role, { label: string; desc: string; icon: typeof Store; cls: string }> = {
-  RECEPTION: { label: "استقبال", desc: "يدخل حالة ولي الأمر ويختار المشاريع", icon: Store, cls: "bg-info-soft text-info" },
+  RECEPTION: { label: "استقبال", desc: "يدخل هوية الحالة ويحوّلها للمشاريع", icon: Store, cls: "bg-info-soft text-info" },
   POINT: { label: "نقطة مشروع", desc: "يدخل كل حالة يخدمها في مشروعه", icon: Stethoscope, cls: "bg-ok-soft text-ok" },
   SUPERVISOR: { label: "مشرف", desc: "يرى سجل الأيام وتفاصيلها والتصدير فقط", icon: ClipboardList, cls: "bg-warn-soft text-warn" },
   ADMIN: { label: "أدمن", desc: "لوحة التحكم الكاملة وإدارة الموقع", icon: ShieldCheck, cls: "bg-brand-soft text-brand" },

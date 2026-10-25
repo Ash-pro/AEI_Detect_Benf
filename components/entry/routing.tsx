@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { CheckBox } from "@/components/ui/check";
 import { FieldError } from "@/components/ui/field";
 import { useStore } from "@/lib/store";
-import { centerName, projectName, userName } from "@/lib/queries";
+import { centerName, correctionText, projectName, userName } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
-import type { Entry, Project, SessionUser } from "@/lib/types";
+import type { Entry, IdType, Project, SessionUser } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
 
 const names = (db: Parameters<typeof projectName>[0], list: string[]) => list.map((p) => projectName(db, p)).join("، ");
@@ -34,12 +34,21 @@ export function RoutingPanel({
 
   if (!reception) {
     return (
-      <div className="flex gap-3 rounded-2xl border border-line bg-sunken px-4 py-3.5 text-sm">
-        <Info className="mt-0.5 size-5 shrink-0 text-muted" />
-        <div>
-          <div className="font-bold">لم تمر على الاستقبال اليوم</div>
-          <div className="mt-0.5 text-muted">معلومة فقط، ويمكنك إدخال الخدمة. إذا كانت الحالة لمشروع آخر، وجّهها مباشرة إلى نقطة ذلك المشروع دون الرجوع للاستقبال.</div>
+      <div className="overflow-hidden rounded-2xl border border-line bg-sunken">
+        <div className="flex gap-3 px-4 py-3.5 text-sm">
+          <Info className="mt-0.5 size-5 shrink-0 text-muted" />
+          <div>
+            <div className="font-bold">لم تمر على الاستقبال اليوم</div>
+            <div className="mt-0.5 text-muted">يمكنك إدخال الخدمة مباشرة. وإذا كانت الحالة لمشروع آخر، حوّلها من هنا فتأخذ رقم دور في ذلك المشروع باسمك.</div>
+          </div>
         </div>
+        <button
+          onClick={onFix}
+          className="focus-ring flex min-h-11 w-full items-center justify-center gap-2 border-t border-line bg-surface/60 px-4 py-2.5 text-sm font-bold text-ink hover:bg-surface"
+        >
+          <ArrowLeftRight className="size-4" />
+          تحويل لمشروع آخر
+        </button>
       </div>
     );
   }
@@ -76,7 +85,7 @@ export function RoutingPanel({
           {reception.corrected && (
             <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-surface/70 px-2 py-1 text-xs font-bold text-warn">
               <PenLine className="size-3.5" />
-              عُدّل التوجيه من {names(db, reception.corrected.from)} بواسطة {userName(db, reception.corrected.by)}{" "}
+              {correctionText(db, reception.corrected, true)}{" "}
               <span className="num">{formatTime(reception.corrected.at)}</span>
             </div>
           )}
@@ -87,7 +96,7 @@ export function RoutingPanel({
       </div>
       <button
         onClick={onFix}
-        className="focus-ring flex w-full items-center justify-center gap-2 border-t border-black/5 bg-surface/60 px-4 py-2.5 text-sm font-bold text-ink hover:bg-surface"
+        className="focus-ring flex min-h-11 w-full items-center justify-center gap-2 border-t border-black/5 bg-surface/60 px-4 py-2.5 text-sm font-bold text-ink hover:bg-surface"
       >
         <ArrowLeftRight className="size-4" />
         التوجيه خاطئ؟ تعديل التوجيه
@@ -100,6 +109,9 @@ export function RoutingPanel({
 export function RoutingDialog({
   open,
   onClose,
+  nid,
+  name,
+  type,
   reception,
   projects,
   myEntries,
@@ -107,30 +119,38 @@ export function RoutingDialog({
 }: {
   open: boolean;
   onClose: () => void;
+  nid: string;
+  /** للحالة الجديدة: الاسم ونوع الهوية من نموذج الإدخال */
+  name?: string;
+  type?: IdType;
   reception?: Entry;
   projects: Project[];
   myEntries: Entry[];
-  onDone: (projects: string[]) => void;
+  onDone: (projects: string[], queue: Record<string, number>) => void;
 }) {
-  const { db, correctRouting } = useStore();
+  const { db, referFromPoint } = useStore();
   const [sel, setSel] = useState<string[]>([]);
   const [del, setDel] = useState<string[]>([]);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const create = !reception;
 
   useEffect(() => {
-    if (!open || !reception) return;
-    setSel(reception.projects);
+    if (!open) return;
+    setSel(reception?.projects ?? []);
     setDel(myEntries.map((e) => e.id));
     setErr("");
   }, [open, reception, myEntries]);
 
-  if (!reception) return null;
-  const changed = sel.slice().sort().join() !== reception.projects.slice().sort().join();
+  const changed = sel.slice().sort().join() !== (reception?.projects ?? []).slice().sort().join();
 
   async function save() {
-    const e = await correctRouting(reception!.id, sel, del);
-    if (e) return setErr(e);
-    onDone(sel);
+    if (busy) return;
+    setBusy(true);
+    const r = await referFromPoint({ nid, projects: sel, deleteEntryIds: del, name, type });
+    setBusy(false);
+    if (r.error) return setErr(r.error);
+    onDone(sel, r.queue ?? {});
   }
 
   return (
@@ -138,31 +158,36 @@ export function RoutingDialog({
       open={open}
       onClose={onClose}
       size="lg"
-      title="تعديل التوجيه"
-      description="يغيّر المشروع الذي حوّل إليه الاستقبال اليوم، ولا يسجّل أي خدمة"
+      title={create ? "تحويل لمشروع آخر" : "تعديل التوجيه"}
+      description={
+        create
+          ? "الحالة لم تمر على الاستقبال اليوم: يُنشأ تحويل باسمك وتأخذ رقم دور في المشروع المختار"
+          : "يغيّر المشروع الذي حوّل إليه الاستقبال اليوم، ولا يسجّل أي خدمة"
+      }
       footer={
         <>
           <Button variant="secondary" size="lg" onClick={onClose}>
             إلغاء
           </Button>
-          <Button size="lg" className="sm:min-w-[220px]" disabled={!changed || !sel.length} onClick={save}>
-            حفظ التوجيه الصحيح
+          <Button size="lg" className="sm:min-w-[220px]" disabled={!changed || !sel.length || busy} onClick={save}>
+            {busy ? "جارٍ الحفظ…" : create ? "تحويل وإعطاء رقم دور" : "حفظ التوجيه الصحيح"}
           </Button>
         </>
       }
     >
       <div className="space-y-5">
-        <div className="rounded-xl bg-sunken px-4 py-3 text-sm">
-          <span className="text-muted">التوجيه الحالي من الاستقبال:</span>{" "}
-          <span className="font-bold">{names(db, reception.projects)}</span>
-          <span className="text-muted">
-            {" "}
-            · <span className="num">{formatTime(reception.at)}</span> · {userName(db, reception.userId)}
-          </span>
-        </div>
+        {reception && (
+          <div className="rounded-xl bg-sunken px-4 py-3 text-sm">
+            <span className="text-muted">التوجيه الحالي:</span> <span className="font-bold">{names(db, reception.projects)}</span>
+            <span className="text-muted">
+              {" "}
+              · <span className="num">{formatTime(reception.at)}</span> · {userName(db, reception.userId)}
+            </span>
+          </div>
+        )}
 
         <fieldset>
-          <legend className="mb-2.5 text-sm font-bold">المشروع الصحيح</legend>
+          <legend className="mb-2.5 text-sm font-bold">{create ? "حوّل الحالة إلى" : "المشروع الصحيح"}</legend>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             {projects.map((p) => (
               <CheckBox
@@ -202,7 +227,7 @@ export function RoutingDialog({
 
         <p className="flex gap-2 text-sm text-muted">
           <Info className="mt-0.5 size-4 shrink-0" />
-          بعد الحفظ: وجّه المستفيد إلى نقطة المشروع الصحيح. موظف تلك النقطة سيرى أن الحالة محوّلة إليه، مع ملاحظة أن التوجيه عُدّل.
+          بعد الحفظ: بلّغ المستفيد برقم دوره ووجّهه إلى نقطة المشروع. الحالة تظهر في قائمة انتظار ذلك المشروع مع اسمك.
         </p>
         <FieldError>{err}</FieldError>
       </div>

@@ -40,7 +40,7 @@ function DayInner() {
 
   return (
     <>
-      <Link href="/admin/days" className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
+      <Link href="/admin/days" className="-ms-2 mb-2 inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-muted hover:bg-sunken hover:text-ink">
         <ArrowRight className="size-4" />
         سجل الأيام
       </Link>

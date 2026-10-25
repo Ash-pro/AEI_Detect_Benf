@@ -9,7 +9,7 @@ import { assignQueue } from "./queue";
 import { nextColor, withColors } from "./project-colors";
 import { storageGet, storageSet, todayKey, uuid } from "./utils";
 import { isStaff } from "./roles";
-import { StoreContext, type AddEntryInput, type AddEntryResult, type Ctx } from "./store";
+import { StoreContext, type AddEntryInput, type AddEntryResult, type Ctx, type ReferInput } from "./store";
 
 const DB_KEY = "aei.demo.db";
 const CENTER_KEY = "aei.v2.center";
@@ -289,6 +289,39 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     [db, user, log],
   );
 
+  /** النقطة: تصحيح التوجيه أو إنشاء تحويل جديد باسم موظف النقطة */
+  const referFromPoint = useCallback(
+    (input: ReferInput): { error?: string; queue?: Record<string, number>; created?: boolean } => {
+      if (!user || !center) return { error: "انتهت الجلسة" };
+      if (!input.projects.length) return { error: "اختر المشروع الصحيح" };
+      const today = todayKey();
+      const rec = db.entries.find((e) => e.kind === "RECEPTION" && e.nid === input.nid && e.date === today && e.center === center);
+      if (rec) {
+        const err = correctRouting(rec.id, input.projects, input.deleteEntryIds);
+        return err ? { error: err } : { created: false };
+      }
+      const isNew = !db.beneficiaries[input.nid];
+      if (isNew && (!input.name?.trim() || !input.type)) return { error: "اكتب اسم المستفيد واختر نوع الهوية أولاً" };
+      const now = new Date().toISOString();
+      const base: Entry = { id: uuid(), nid: input.nid, center, userId: user.id, kind: "RECEPTION", at: now, date: today, projects: input.projects, isNew, corrected: { by: user.id, at: now, from: [] } };
+      const q = assignQueue(db.counters, base, input.projects);
+      setDb((d) =>
+        log(
+          {
+            ...d,
+            counters: { ...d.counters, ...q.counters },
+            beneficiaries: isNew ? { ...d.beneficiaries, [input.nid]: { nid: input.nid, name: input.name!.trim(), type: input.type, createdAt: now } } : d.beneficiaries,
+            entries: [...d.entries.filter((x) => !input.deleteEntryIds.includes(x.id)), { ...base, queue: q.queue }],
+          },
+          "تحويل من نقطة",
+          `${input.nid} ← ${input.projects.join("، ")}`,
+        ),
+      );
+      return { queue: q.queue, created: true };
+    },
+    [db, user, center, log, correctRouting],
+  );
+
   const moveEntry = useCallback(
     (entryId: string, newNid: string) => {
       const e = db.entries.find((x) => x.id === entryId);
@@ -391,6 +424,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       updateEntryProjects: async (id, p) => updateEntryProjects(id, p),
       deleteEntry: async (id) => (deleteEntry(id), null),
       correctRouting: async (id, p, d) => correctRouting(id, p, d),
+      referFromPoint: async (i) => referFromPoint(i),
       moveEntry: async (id, n) => moveEntry(id, n),
       saveUser: async (u) => saveUser({ ...u, password: u.password || db.users.find((x) => x.id === u.id)?.password || "1234" }),
       deleteUser: async (id) => (deleteUser(id), null),
@@ -399,7 +433,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       renameCenter: async (c, n) => renameCenter(c, n),
       saveSettings: async (s) => (saveSettings(s), null),
     }),
-    [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
+    [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

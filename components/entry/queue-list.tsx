@@ -155,6 +155,12 @@ function Row({ item, db, now, showProject, onPick }: { item: QueueItem; db: Db; 
             <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
             <IdTypeTag type={b?.type} />
             {showProject && <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-bold">{projectName(db, item.project)}</span>}
+            {item.reception.corrected && !item.reception.corrected.from.length && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
+                <ArrowLeftRight className="size-3" />
+                تحويل من نقطة
+              </span>
+            )}
             {item.movedFrom && (
               <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
                 <PenLine className="size-3" />
