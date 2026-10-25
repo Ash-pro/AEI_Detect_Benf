@@ -64,10 +64,24 @@ export function isToday(iso: string): boolean {
   return dateKey(iso) === todayKey();
 }
 
+/** الساعة (0-23) بتوقيت غزة */
+export function hourOf(iso: string): number {
+  const h = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hour12: false }).format(new Date(iso));
+  return Number(h) % 24;
+}
+
+/** تسمية ساعة بنظام 12: "8 ص"، "12 م" */
+export function hourLabel(h: number): string {
+  return `${h % 12 || 12} ${h < 12 ? "ص" : "م"}`;
+}
+
+/** الوقت بنظام 12 ساعة: 09:10 ص — 12:30 م */
 export function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(
-    new Date(iso),
-  );
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(iso));
+  const h24 = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${m} ${h24 < 12 ? "ص" : "م"}`;
 }
 
 export function formatDate(iso: string): string {

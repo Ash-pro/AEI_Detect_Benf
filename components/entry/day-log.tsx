@@ -372,7 +372,7 @@ export function DayLog({
 
         {/* رؤوس الأعمدة على الشاشات الكبيرة */}
         {list.length > 0 && (
-          <div className="hidden border-b border-line bg-sunken/50 px-5 py-2 text-xs font-semibold text-muted md:grid md:grid-cols-[76px_minmax(0,1fr)_120px_64px_minmax(0,0.9fr)_84px] md:items-center md:gap-3">
+          <div className="hidden border-b border-line bg-sunken/50 px-5 py-2 text-xs font-semibold text-muted md:grid md:grid-cols-[76px_minmax(0,1fr)_112px_76px_minmax(0,0.9fr)_84px] md:items-center md:gap-3">
             <span>{sort === "queue" ? "الدور" : "الوقت"}</span>
             <span>المستفيد</span>
             <span>رقم الهوية</span>
@@ -551,14 +551,14 @@ function Row({
         <span className="mt-0.5 max-w-full truncate px-1 text-[10px] font-bold opacity-90">{number ? projectName(db, project!) : "بدون دور"}</span>
       </span>
     ) : (
-      <span className="num w-[60px] shrink-0 text-base font-bold md:w-[76px]">{formatTime(e.at)}</span>
+      <span className="num w-[68px] shrink-0 whitespace-nowrap text-sm font-bold md:w-[76px]">{formatTime(e.at)}</span>
     );
 
   return (
     <li className="group flex items-center gap-1 pe-2 hover:bg-sunken/40">
       <button
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start sm:px-5 md:grid md:grid-cols-[76px_minmax(0,1fr)_120px_64px_minmax(0,0.9fr)] md:gap-3"
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start sm:px-5 md:grid md:grid-cols-[76px_minmax(0,1fr)_112px_76px_minmax(0,0.9fr)] md:gap-3"
       >
         {lead}
         <span className="min-w-0 flex-1">
@@ -601,7 +601,7 @@ function Row({
           )}
         </span>
         <span className="num hidden text-sm font-semibold tracking-wider text-ink/80 md:block">{e.nid}</span>
-        <span className="num hidden text-sm text-muted md:block">{mode === "queue" ? formatTime(e.at) : ""}</span>
+        <span className="num hidden whitespace-nowrap text-sm text-muted md:block">{mode === "queue" ? formatTime(e.at) : ""}</span>
         <span className="hidden flex-wrap gap-1 md:flex">
           {mode === "time" &&
             e.projects.map((p) => <ProjectChip key={p} db={db} code={p} number={isPoint ? pq?.number : e.queue?.[p]} />)}

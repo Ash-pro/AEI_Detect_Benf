@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History } from "lucide-react";
-import { PageHead } from "@/components/admin/bits";
+import { History, Lightbulb, ShieldCheck } from "lucide-react";
+import { PageHead, SectionHead } from "@/components/admin/bits";
 import { SiteModeCard } from "@/components/admin/site-mode-card";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,48 +20,45 @@ export default function SettingsPage() {
   const [s, setS] = useState<Settings>(db.settings);
   useEffect(() => setS(db.settings), [db.settings]);
   const dirty = JSON.stringify(s) !== JSON.stringify(db.settings);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    const e = await saveSettings({ ...s, idleMinutes: Math.min(Math.max(Number(s.idleMinutes) || 30, 5), 240) });
+    setSaving(false);
+    toast(e ?? "تم حفظ الإعدادات", e ? "bad" : "ok");
+  }
 
   return (
     <>
-      <PageHead
-        title="الإعدادات"
-        actions={
-          <Button
-            size="lg"
-            disabled={!dirty}
-            onClick={async () => {
-              const e = await saveSettings({ ...s, idleMinutes: Math.min(Math.max(Number(s.idleMinutes) || 30, 5), 240) });
-              toast(e ?? "تم حفظ الإعدادات", e ? "bad" : "ok");
-            }}
-          >
-            حفظ الإعدادات
-          </Button>
-        }
-      />
+      <PageHead title="الإعدادات" sub="وضع الموقع والتلميحات والأمان وسجل التغييرات" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SiteModeCard />
 
-        <Card className="space-y-5 p-5">
-          <h2 className="text-lg font-bold">التلميحات</h2>
+        <Card className="overflow-hidden">
+          <SectionHead title="التلميحات" icon={Lightbulb} sub="تظهر أعلى شاشة الإدخال لكل موظف حسب نوع حسابه" />
+          <div className="space-y-5 p-4 sm:p-5">
           <div>
             <Label htmlFor="h-r">تلميح موظف الاستقبال</Label>
-            <Textarea id="h-r" value={s.hintReception} onChange={(e) => setS({ ...s, hintReception: e.target.value })} />
+            <Textarea id="h-r" rows={4} value={s.hintReception} onChange={(e) => setS({ ...s, hintReception: e.target.value })} />
           </div>
           <div>
             <Label htmlFor="h-p">تلميح موظف النقطة</Label>
-            <Textarea id="h-p" value={s.hintPoint} onChange={(e) => setS({ ...s, hintPoint: e.target.value })} />
+            <Textarea id="h-p" rows={4} value={s.hintPoint} onChange={(e) => setS({ ...s, hintPoint: e.target.value })} />
           </div>
-          <FieldHint>يظهر التلميح أعلى شاشة الإدخال لكل موظف حسب نوع حسابه.</FieldHint>
+          </div>
         </Card>
 
-        <Card className="space-y-5 p-5">
-          <h2 className="text-lg font-bold">الأمان</h2>
+        <Card className="overflow-hidden">
+          <SectionHead title="الأمان" icon={ShieldCheck} />
+          <div className="space-y-5 p-4 sm:p-5">
           <div>
             <Label htmlFor="idle">الخروج التلقائي بعد عدم النشاط (دقيقة)</Label>
             <Input id="idle" type="number" dir="ltr" min={5} max={240} className="num max-w-[160px] text-start" value={s.idleMinutes} onChange={(e) => setS({ ...s, idleMinutes: Number(e.target.value) })} />
           </div>
-          <FieldHint>رقم الهوية: الشرط الوحيد أن يكون 9 أرقام بالضبط.</FieldHint>
+            <FieldHint>بعد هذه المدة بدون أي نشاط يُسجَّل خروج الموظف تلقائياً (من 5 إلى 240 دقيقة).</FieldHint>
+            <FieldHint>رقم الهوية: الشرط الوحيد أن يكون 9 أرقام بالضبط.</FieldHint>
+          </div>
         </Card>
 
         <Card className="overflow-hidden lg:col-span-2">
@@ -73,7 +70,7 @@ export default function SettingsPage() {
             <ul className="max-h-[360px] divide-y divide-line/60 overflow-y-auto">
               {db.changes.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-sm">
-                  <span className="num w-[92px] font-semibold">
+                  <span className="num w-[110px] whitespace-nowrap font-semibold">
                     {dayNum(dateKey(c.at))} <span className="text-muted">{formatTime(c.at)}</span>
                   </span>
                   <span className="rounded-md bg-sunken px-2 py-0.5 text-xs font-bold">{c.action}</span>
@@ -88,6 +85,21 @@ export default function SettingsPage() {
         </Card>
 
       </div>
+
+      {/* شريط الحفظ يظهر فقط عند وجود تغييرات */}
+      {dirty && (
+        <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-30 px-4 lg:bottom-6 lg:ps-[248px]">
+          <div className="mx-auto flex max-w-3xl animate-fade-up flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-pop">
+            <span className="flex-1 text-sm font-bold">لديك تغييرات غير محفوظة</span>
+            <Button variant="secondary" onClick={() => setS(db.settings)} disabled={saving}>
+              تراجع
+            </Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

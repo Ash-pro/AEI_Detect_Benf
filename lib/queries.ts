@@ -1,5 +1,5 @@
 import type { CenterCode, Db, Entry, Project, SessionUser } from "./types";
-import { dayFull, formatTime, todayKey, weekday } from "./utils";
+import { dayFull, formatTime, hourOf, todayKey, weekday } from "./utils";
 import { idTypeLabel, lastNumber, projectQueue, waitingCount } from "./queue";
 
 /* استعلامات العرض على البيانات التجريبية — تُستبدل بدوال Supabase لاحقاً */
@@ -233,4 +233,12 @@ export function lastActivity(db: Db, userId: string): string | undefined {
 export function correctionText(db: Db, c: NonNullable<Entry["corrected"]>, withBy = false): string {
   if (!c.from.length) return `حوّلها موظف النقطة ${userName(db, c.by)}`;
   return `عُدّل التوجيه من ${c.from.map((p) => projectName(db, p)).join("، ")}${withBy ? ` بواسطة ${userName(db, c.by)}` : ""}`;
+}
+
+/** توزيع الإدخالات على ساعات اليوم (بتوقيت غزة) */
+export function hourly(list: Entry[]): { reception: number[]; point: number[] } {
+  const reception = Array<number>(24).fill(0);
+  const point = Array<number>(24).fill(0);
+  list.forEach((e) => (e.kind === "RECEPTION" ? reception : point)[hourOf(e.at)]++);
+  return { reception, point };
 }

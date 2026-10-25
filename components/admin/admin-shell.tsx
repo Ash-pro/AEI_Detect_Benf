@@ -9,14 +9,20 @@ import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-const NAV: { href: string; label: string; short: string; icon: typeof LayoutDashboard; supervisor?: boolean; main?: boolean }[] = [
-  { href: "/admin", label: "الرئيسية", short: "الرئيسية", icon: LayoutDashboard, main: true },
-  { href: "/admin/days", label: "سجل الأيام", short: "الأيام", icon: CalendarDays, supervisor: true, main: true },
-  { href: "/admin/users", label: "المستخدمون", short: "المستخدمون", icon: Users, supervisor: true, main: true },
-  { href: "/admin/beneficiaries", label: "المستفيدون", short: "المستفيدون", icon: Search, main: true },
-  { href: "/admin/reports", label: "التقارير", short: "التقارير", icon: LineChart },
-  { href: "/admin/projects", label: "المشاريع والمراكز", short: "المشاريع", icon: FolderKanban, supervisor: true },
-  { href: "/admin/settings", label: "الإعدادات", short: "الإعدادات", icon: Settings },
+type Group = "daily" | "analysis" | "manage";
+const GROUPS: { id: Group; label: string }[] = [
+  { id: "daily", label: "المتابعة اليومية" },
+  { id: "analysis", label: "التحليل" },
+  { id: "manage", label: "الإدارة" },
+];
+const NAV: { href: string; label: string; short: string; icon: typeof LayoutDashboard; group: Group; supervisor?: boolean; main?: boolean }[] = [
+  { href: "/admin", label: "الرئيسية", short: "الرئيسية", icon: LayoutDashboard, group: "daily", main: true },
+  { href: "/admin/days", label: "سجل الأيام", short: "الأيام", icon: CalendarDays, group: "daily", supervisor: true, main: true },
+  { href: "/admin/beneficiaries", label: "المستفيدون", short: "المستفيدون", icon: Search, group: "daily", main: true },
+  { href: "/admin/reports", label: "التقارير", short: "التقارير", icon: LineChart, group: "analysis" },
+  { href: "/admin/users", label: "المستخدمون", short: "المستخدمون", icon: Users, group: "manage", supervisor: true, main: true },
+  { href: "/admin/projects", label: "المشاريع والمراكز", short: "المشاريع", icon: FolderKanban, group: "manage", supervisor: true },
+  { href: "/admin/settings", label: "الإعدادات", short: "الإعدادات", icon: Settings, group: "manage" },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -38,20 +44,36 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="px-5 py-5">
             <BrandMark />
           </div>
-          <nav className="flex-1 space-y-0.5 px-3" aria-label="لوحة التحكم">
-            {nav.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={cn(
-                  "focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition",
-                  isActive(n.href) ? "bg-brand-soft text-brand" : "text-muted hover:bg-sunken hover:text-ink",
-                )}
-              >
-                <n.icon className="size-5" />
-                {n.label}
-              </Link>
-            ))}
+          <nav className="flex-1 space-y-5 overflow-y-auto px-3 pt-1" aria-label="لوحة التحكم">
+            {GROUPS.map((g) => {
+              const items = nav.filter((n) => n.group === g.id);
+              if (!items.length) return null;
+              return (
+                <div key={g.id}>
+                  <div className="mb-1 px-3 text-[11px] font-bold tracking-wide text-muted/80">{g.label}</div>
+                  <div className="space-y-0.5">
+                    {items.map((n) => {
+                      const on = isActive(n.href);
+                      return (
+                        <Link
+                          key={n.href}
+                          href={n.href}
+                          aria-current={on ? "page" : undefined}
+                          className={cn(
+                            "focus-ring relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition",
+                            on ? "bg-brand-soft text-brand" : "text-muted hover:bg-sunken hover:text-ink",
+                          )}
+                        >
+                          {on && <span className="absolute inset-y-2 start-0 w-1 rounded-full bg-brand" aria-hidden />}
+                          <n.icon className="size-5" />
+                          {n.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
           {!isStandalone() && (
             <div className="px-3 pb-2">
@@ -69,7 +91,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <span className="grid size-9 place-items-center rounded-full bg-sunken font-bold text-muted">{user?.fullName.trim()[0]}</span>
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="truncate text-sm font-bold">{user?.fullName}</div>
-                <div className="ltr text-start text-xs text-muted">{user?.username}</div>
+                <div className="text-xs text-muted">{user?.role === "SUPERVISOR" ? "مشرف" : "أدمن"} · <span className="ltr inline-block">{user?.username}</span></div>
               </div>
               <button
                 onClick={() => {

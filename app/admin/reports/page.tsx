@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bar, CenterTabs, ExportButton, PageHead, StatCard } from "@/components/admin/bits";
+import { Award, CalendarRange, Clock3, Gauge, LayoutList, LineChart as LineIcon, Stethoscope, Store, UserPlus } from "lucide-react";
+import { Bar, CenterTabs, CoverageBar, ExportButton, FilterBar, HourChart, Legend, MonthSelect, PageHead, SectionHead, StatCard, coverage } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
-import { type CenterFilter, dayStats, months, projectName, staffRanking, workedDays } from "@/lib/queries";
+import { type CenterFilter, dayStats, filterCenter, hourly, months, projectName, staffRanking, workedDays } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
-import { dayNum, monthLabel, todayKey } from "@/lib/utils";
+import { dayNum, hourLabel, monthLabel, todayKey } from "@/lib/utils";
+
+const WEEK = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
 /** الشاشة 7 — التقارير الشهرية */
 export default function ReportsPage() {
@@ -33,97 +36,141 @@ export default function ReportsPage() {
         served: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.served ?? 0), 0),
       }))
       .filter((p) => p.referred || p.served)
-      .sort((a, b) => b.served - a.served);
+      .sort((a, b) => b.referred - a.referred);
+    const referred = projects.reduce((n, p) => n + p.referred, 0);
+    const served = projects.reduce((n, p) => n + p.served, 0);
     const fullRec = fullStats.reduce((n, s) => n + s.reception, 0);
-    return { rec, nw, pt, projects, avg: fullStats.length ? Math.round(fullRec / fullStats.length) : 0 };
+    return { rec, nw, pt, projects, referred, served, avg: fullStats.length ? Math.round(fullRec / fullStats.length) : 0 };
   }, [stats, fullStats, db.projects]);
   const ranking = useMemo(() => staffRanking(db, new Set(days), center).slice(0, 10), [db, days, center]);
-  const maxP = Math.max(1, ...totals.projects.map((p) => Math.max(p.referred, p.served)));
+  const monthEntries = useMemo(() => filterCenter(db.entries.filter((e) => e.date.startsWith(month)), center), [db, month, center]);
+  const hours = useMemo(() => hourly(monthEntries), [monthEntries]);
+  const hourSum = hours.reception.map((v, i) => v + hours.point[i]);
+  const peak = hourSum.some(Boolean) ? hourSum.indexOf(Math.max(...hourSum)) : null;
+  /* متوسط الاستقبال حسب يوم الأسبوع (أيام مكتملة فقط) */
+  const byWeekday = useMemo(() => {
+    const acc = WEEK.map(() => ({ sum: 0, n: 0 }));
+    fullStats.forEach((s) => {
+      const w = new Date(`${s.date}T12:00:00Z`).getUTCDay();
+      acc[w].sum += s.reception;
+      acc[w].n++;
+    });
+    return acc.map((a, i) => ({ day: WEEK[i], avg: a.n ? Math.round(a.sum / a.n) : 0, n: a.n })).filter((x) => x.n);
+  }, [fullStats]);
+  const maxW = Math.max(1, ...byWeekday.map((w) => w.avg));
+  const maxRank = Math.max(1, ...ranking.map((r) => r.count));
+  const pct = coverage(totals.served, totals.referred);
 
   return (
     <>
       <PageHead
         title="التقارير"
         sub={`${monthLabel(month)} · ${days.length} يوم عمل`}
-        actions={
-          <>
-            <select
-              aria-label="الشهر"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="h-10 rounded-xl border border-line bg-surface px-3 text-sm font-bold"
-            >
-              {monthList.map((m) => (
-                <option key={m} value={m}>
-                  {monthLabel(m)}
-                </option>
-              ))}
-            </select>
-            <CenterTabs value={center} onChange={setCenter} />
-            <ExportButton label="تصدير الشهر" scope={`شهر ${monthLabel(month)}`} />
-          </>
-        }
+        actions={<ExportButton label="تصدير الشهر" scope={`شهر ${monthLabel(month)}`} />}
       />
 
+      <FilterBar>
+        <MonthSelect value={month} onChange={setMonth} months={monthList} />
+        <CenterTabs value={center} onChange={setCenter} />
+      </FilterBar>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="حالات الاستقبال" value={totals.rec} tone="brand" />
-        <StatCard label="حالات جديدة" value={totals.nw} tone="info" />
-        <StatCard label="حالات النقاط" value={totals.pt} tone="ok" />
-        <StatCard label="متوسط الاستقبال اليومي" value={totals.avg} />
+        <StatCard label="حالات الاستقبال" value={totals.rec} tone="brand" icon={Store} hint={`متوسط ${totals.avg} يومياً`} />
+        <StatCard label="حالات جديدة" value={totals.nw} tone="info" icon={UserPlus} hint={totals.rec ? `${Math.round((totals.nw / totals.rec) * 100)}% من الاستقبال` : undefined} />
+        <StatCard label="خُدمت في النقاط" value={totals.pt} tone="ok" icon={Stethoscope} />
+        <StatCard
+          label="نسبة الخدمة"
+          value={pct === null ? "—" : pct}
+          suffix={pct === null ? undefined : "%"}
+          tone={pct === null ? "ink" : pct >= 80 ? "ok" : "warn"}
+          icon={Gauge}
+          hint={`${totals.served.toLocaleString("en-US")} من ${totals.referred.toLocaleString("en-US")} موجّه`}
+        />
       </div>
 
-      <Card className="mt-6 p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold">الحالات يومياً</h2>
-          <div className="flex gap-4 text-xs font-semibold text-muted">
-            <span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-5 rounded bg-brand" />الاستقبال</span>
-            <span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-5 rounded bg-ok" />النقاط</span>
-          </div>
+      <Card className="mt-6 overflow-hidden">
+        <SectionHead
+          title="الحالات يومياً"
+          icon={LineIcon}
+          actions={
+            <Legend
+              items={[
+                { label: "الاستقبال", cls: "bg-brand" },
+                { label: "النقاط", cls: "bg-ok" },
+              ]}
+            />
+          }
+        />
+        <div className="p-4 sm:p-5">
+          <LineChart labels={fullDays.map(dayNum)} a={fullStats.map((s) => s.reception)} b={fullStats.map((s) => s.point)} />
+          {days.includes(today) && <p className="mt-2 text-xs text-muted">اليوم لم يكتمل بعد، فلا يظهر في الرسم ولا في المتوسط.</p>}
         </div>
-        <LineChart labels={fullDays.map(dayNum)} a={fullStats.map((s) => s.reception)} b={fullStats.map((s) => s.point)} />
-        {days.includes(today) && <p className="mt-2 text-xs text-muted">اليوم لم يكتمل بعد، فلا يظهر في الرسم ولا في المتوسط.</p>}
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card className="p-5">
-          <h2 className="mb-4 text-lg font-bold">المشاريع خلال الشهر</h2>
-          <ul className="space-y-4">
+        <Card className="overflow-hidden">
+          <SectionHead title="أوقات الذروة" icon={Clock3} sub={peak !== null ? `أكثر ساعة ازدحاماً: ${hourLabel(peak)}` : undefined} />
+          <div className="p-4 sm:p-5">
+            <HourChart reception={hours.reception} point={hours.point} />
+          </div>
+        </Card>
+        <Card className="overflow-hidden">
+          <SectionHead title="متوسط الاستقبال حسب يوم الأسبوع" icon={CalendarRange} />
+          <ul className="space-y-3 p-4 sm:p-5">
+            {byWeekday.map((w) => (
+              <li key={w.day} className="grid grid-cols-[72px_minmax(0,1fr)_40px] items-center gap-3 text-sm">
+                <span className="font-semibold">{w.day}</span>
+                <Bar value={w.avg} max={maxW} />
+                <span className="num text-end font-bold">{w.avg}</span>
+              </li>
+            ))}
+            {!byWeekday.length && <li className="py-8 text-center text-sm text-muted">لا توجد أيام مكتملة بعد</li>}
+          </ul>
+        </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <SectionHead title="المشاريع خلال الشهر" icon={LayoutList} sub="موجّه من الاستقبال · مخدوم في النقطة · نسبة الخدمة" />
+          <ul className="divide-y divide-line/60">
             {totals.projects.map((p) => (
-              <li key={p.name}>
-                <div className="mb-1.5 flex items-center justify-between text-sm">
+              <li key={p.code} className="space-y-2 px-4 py-3 sm:px-5">
+                <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="flex items-center gap-2 font-bold">
                     <span className="size-2.5 rounded-full" style={{ background: projectColor(db, p.code) }} />
                     {p.name}
                   </span>
                   <span className="num text-muted">
-                    موجّه <b className="text-ink">{p.referred}</b> · مخدوم <b className="text-ink">{p.served}</b>
+                    موجّه <b className="text-ink">{p.referred}</b> · مخدوم <b className="text-ok">{p.served}</b>
                   </span>
                 </div>
-                <div className="space-y-1">
-                  <Bar value={p.referred} max={maxP} />
-                  <Bar value={p.served} max={maxP} tone="ok" />
-                </div>
+                <CoverageBar served={p.served} referred={p.referred} compact />
               </li>
             ))}
+            {!totals.projects.length && <li className="py-10 text-center text-sm text-muted">لا توجد بيانات</li>}
           </ul>
         </Card>
 
         <Card className="overflow-hidden">
-          <h2 className="px-5 pb-3 pt-5 text-lg font-bold">الموظفون حسب عدد الإدخالات</h2>
-          <table className="w-full text-sm">
-            <tbody className="divide-y divide-line/60">
-              {ranking.map((r, i) => (
-                <tr key={r.user!.id}>
-                  <td className="num w-10 px-5 py-2.5 text-muted">{i + 1}</td>
-                  <td className="py-2.5 font-semibold">{r.user!.fullName}</td>
-                  <td className="px-3 py-2.5 text-xs text-muted">
-                    {r.user!.role === "RECEPTION" ? "استقبال" : `نقطة ${r.user!.projects.map((c) => projectName(db, c)).join(" + ")}`}
-                  </td>
-                  <td className="num px-5 py-2.5 text-end font-bold">{r.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SectionHead title="الموظفون الأكثر إدخالاً" icon={Award} />
+          <ul className="divide-y divide-line/60">
+            {ranking.map((r, i) => (
+              <li key={r.user!.id} className="grid grid-cols-[28px_minmax(0,1fr)_56px] items-center gap-3 px-4 py-2.5 sm:px-5">
+                <span className={`num grid size-7 place-items-center rounded-full text-xs font-bold ${i < 3 ? "bg-brand text-brand-ink" : "bg-sunken text-muted"}`}>{i + 1}</span>
+                <span className="min-w-0 space-y-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-sm font-semibold">{r.user!.fullName}</span>
+                    <span className="truncate text-[11px] text-muted">
+                      {r.user!.role === "RECEPTION" ? "استقبال" : `نقطة ${r.user!.projects.map((c) => projectName(db, c)).join(" + ")}`}
+                    </span>
+                  </span>
+                  <Bar value={r.count} max={maxRank} tone={r.user!.role === "RECEPTION" ? "brand" : "ok"} />
+                </span>
+                <span className="num text-end font-bold">{r.count.toLocaleString("en-US")}</span>
+              </li>
+            ))}
+            {!ranking.length && <li className="py-10 text-center text-sm text-muted">لا توجد بيانات</li>}
+          </ul>
         </Card>
       </div>
     </>

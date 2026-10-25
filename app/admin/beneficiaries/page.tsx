@@ -1,17 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Pencil, Search, UserRound } from "lucide-react";
+import { Fingerprint, Pencil, Search, UserPlus, UserRound, X } from "lucide-react";
 import { BeneficiaryEditor } from "@/components/entry/edit-dialog";
 import { IdTypeTag } from "@/components/entry/id-fields";
-import { PageHead } from "@/components/admin/bits";
+import { PageHead, StatCard } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
 import { entriesOf } from "@/lib/queries";
 import type { Entry } from "@/lib/types";
-import { formatDate, normalizeArabicName, normalizeDigits } from "@/lib/utils";
+import { dateKey, formatDate, normalizeArabicName, normalizeDigits, todayKey } from "@/lib/utils";
 
 /** الشاشة 10 — المستفيدون والإدخالات */
 export default function BeneficiariesPage() {
@@ -20,22 +20,33 @@ export default function BeneficiariesPage() {
   const [nid, setNid] = useState<string | null>(null);
   const [edit, setEdit] = useState<Entry | null>(null);
 
-  const total = Object.keys(db.beneficiaries).length;
+  const all = useMemo(() => Object.values(db.beneficiaries), [db.beneficiaries]);
+  const total = all.length;
+  const today = todayKey();
+  const newToday = useMemo(() => all.filter((b) => dateKey(b.createdAt) === today).length, [all, today]);
+  const newMonth = useMemo(() => all.filter((b) => dateKey(b.createdAt).startsWith(today.slice(0, 7))).length, [all, today]);
+  const recent = useMemo(() => [...all].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20), [all]);
+  const searching = q.trim().length > 0;
   const results = useMemo(() => {
     const digits = normalizeDigits(q);
     const term = normalizeArabicName(q);
     if (!q.trim() || (digits.length < 3 && term.length < 2)) return [];
-    return Object.values(db.beneficiaries)
+    return all
       .filter((b) => (digits.length >= 3 && b.nid.includes(digits)) || (term.length >= 2 && !digits && normalizeArabicName(b.name).includes(term)))
       .slice(0, 30);
-  }, [db.beneficiaries, q]);
+  }, [all, q]);
 
   const b = nid ? db.beneficiaries[nid] : undefined;
   const history = nid ? entriesOf(db, nid) : [];
 
   return (
     <>
-      <PageHead title="المستفيدون" sub={`${total.toLocaleString("en-US")} هوية مسجلة`} />
+      <PageHead title="المستفيدون" sub="ابحث عن أي هوية لعرض كل إدخالاتها وتعديلها" />
+      <div className="mb-5 grid grid-cols-3 gap-3">
+        <StatCard label="المسجلة" value={total} icon={Fingerprint} hint="كل الهويات" />
+        <StatCard label="هذا الشهر" value={newMonth} tone="info" icon={UserPlus} hint="هويات جديدة" />
+        <StatCard label="اليوم" value={newToday} tone="brand" icon={UserPlus} hint="هويات جديدة" />
+      </div>
       <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="overflow-hidden">
           <div className="border-b border-line p-4">
@@ -47,12 +58,18 @@ export default function BeneficiariesPage() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="رقم الهوية أو الاسم"
-                className="h-11 w-full rounded-xl border border-line bg-surface ps-9 pe-3 outline-hidden focus:border-brand"
+                className="h-11 w-full rounded-xl border border-line bg-surface ps-9 pe-9 outline-hidden focus:border-brand"
               />
+              {q && (
+                <button onClick={() => setQ("")} aria-label="مسح البحث" className="absolute end-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-sunken">
+                  <X className="size-4" />
+                </button>
+              )}
             </div>
           </div>
+          {!searching && <div className="bg-sunken/60 px-4 py-2 text-xs font-semibold text-muted">آخر المسجلين</div>}
           <ul className="max-h-[560px] divide-y divide-line/60 overflow-y-auto">
-            {results.map((r) => (
+            {(searching ? results : recent).map((r) => (
               <li key={r.nid}>
                 <button
                   onClick={() => {
@@ -69,12 +86,16 @@ export default function BeneficiariesPage() {
                     </span>
                     <span className="num text-xs text-muted">{r.nid}</span>
                   </span>
-                  <span className="num shrink-0 text-xs text-muted">{entriesOf(db, r.nid).length} إدخال</span>
+                  <span className="num shrink-0 text-end text-xs text-muted">
+                    {entriesOf(db, r.nid).length} إدخال
+                    {!searching && <span className="block">{formatDate(r.createdAt)}</span>}
+                  </span>
                 </button>
               </li>
             ))}
-            {q && !results.length && <li className="px-4 py-10 text-center text-sm text-muted">لا نتائج</li>}
-            {!q && <li className="px-4 py-10 text-center text-sm text-muted">ابحث برقم الهوية (3 أرقام على الأقل) أو بالاسم</li>}
+            {searching && !results.length && (
+              <li className="px-4 py-10 text-center text-sm text-muted">لا نتائج. اكتب 3 أرقام على الأقل من الهوية أو حرفين من الاسم</li>
+            )}
           </ul>
         </Card>
 
@@ -103,9 +124,9 @@ export default function BeneficiariesPage() {
             </ul>
           </Card>
         ) : (
-          <Card className="flex flex-col items-center justify-center gap-2 p-14 text-center text-muted">
+          <Card className="hidden flex-col items-center justify-center gap-2 p-14 text-center text-muted lg:flex">
             <UserRound className="size-10" />
-            اختر مستفيداً من نتائج البحث لعرض كل إدخالاته وتعديلها
+            اختر مستفيداً من القائمة لعرض كل إدخالاته وتعديلها
           </Card>
         )}
       </div>

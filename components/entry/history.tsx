@@ -58,7 +58,7 @@ export function HistoryRow({
   const b = person ? db.beneficiaries[e.nid] : undefined;
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-sm">
-      <span className={cn("num shrink-0 font-semibold", timeOnly ? "w-12" : "w-[132px]")}>
+      <span className={cn("num shrink-0 whitespace-nowrap font-semibold", timeOnly ? "w-[68px]" : "w-[150px]")}>
         {!timeOnly && <>{dayFull(e.date)} </>}
         <span className={timeOnly ? "" : "text-muted"}>{formatTime(e.at)}</span>
       </span>

@@ -1,19 +1,39 @@
 "use client";
 
-import { FileSpreadsheet } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileSpreadsheet, type LucideIcon } from "lucide-react";
 import type { CenterFilter } from "@/lib/queries";
 import { useStore } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
+import { addDays, cn, hourLabel, monthLabel, todayKey } from "@/lib/utils";
 
-export function PageHead({ title, sub, actions }: { title: string; sub?: React.ReactNode; actions?: React.ReactNode }) {
+export function PageHead({
+  title,
+  sub,
+  actions,
+  eyebrow,
+}: {
+  title: string;
+  sub?: React.ReactNode;
+  actions?: React.ReactNode;
+  eyebrow?: React.ReactNode;
+}) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6 sm:gap-4">
-      <div>
-        <h1 className="text-xl font-bold sm:text-2xl">{title}</h1>
+      <div className="min-w-0">
+        {eyebrow && <div className="mb-1">{eyebrow}</div>}
+        <h1 className="text-xl font-bold tracking-tight sm:text-[26px]">{title}</h1>
         {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/** شريط الفلاتر: يجمع اليوم/الشهر والمركز وباقي الأدوات في سطر واحد واضح */
+export function FilterBar({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("mb-5 flex w-fit max-w-full flex-wrap items-center gap-2 rounded-2xl border border-line bg-surface p-2 shadow-card sm:gap-3", className)}>
+      {children}
     </div>
   );
 }
@@ -23,14 +43,16 @@ export function Segmented<T extends string>({
   onChange,
   options,
   label,
+  className,
 }: {
   value: T;
   onChange: (v: T) => void;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; count?: number }[];
   label: string;
+  className?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-xl bg-sunken p-1">
+    <div role="radiogroup" aria-label={label} className={cn("inline-flex max-w-full overflow-x-auto rounded-xl bg-sunken p-1", className)}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -38,11 +60,12 @@ export function Segmented<T extends string>({
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "focus-ring rounded-lg px-3.5 py-1.5 text-sm font-bold transition",
+            "focus-ring min-h-9 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-bold transition",
             value === o.value ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
           )}
         >
           {o.label}
+          {o.count !== undefined && <span className="num ms-1.5 text-xs font-semibold text-muted">{o.count}</span>}
         </button>
       ))}
     </div>
@@ -61,31 +84,131 @@ export function CenterTabs({ value, onChange }: { value: CenterFilter; onChange:
   );
 }
 
+/** التنقل بين الأيام: سابق / التاريخ / تالي + زر "اليوم" */
+export function DateStepper({ value, onChange, days }: { value: string; onChange: (d: string) => void; days?: string[] }) {
+  const today = todayKey();
+  // إن وُجدت قائمة أيام العمل ننتقل بينها، وإلا يوماً بيوم
+  const sorted = days ? [...new Set([...days, today])].sort() : null;
+  const i = sorted ? sorted.indexOf(value) : -1;
+  const prev = sorted ? (i > 0 ? sorted[i - 1] : i === -1 ? sorted.filter((d) => d < value).pop() : undefined) : addDays(value, -1);
+  const next = sorted ? (i >= 0 && i < sorted.length - 1 ? sorted[i + 1] : i === -1 ? sorted.find((d) => d > value) : undefined) : value < today ? addDays(value, 1) : undefined;
+  const btn = "focus-ring grid size-10 shrink-0 place-items-center rounded-xl text-muted hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-30";
+  return (
+    <div className="inline-flex items-center gap-1 rounded-xl bg-sunken p-1">
+      <button onClick={() => prev && onChange(prev)} disabled={!prev} aria-label="اليوم السابق" title="اليوم السابق" className={btn}>
+        <ChevronRight className="size-5" />
+      </button>
+      <input
+        type="date"
+        lang="en-GB"
+        aria-label="اليوم"
+        dir="ltr"
+        max={today}
+        value={value}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        className="num h-10 rounded-lg border-0 bg-surface px-2.5 text-sm font-bold shadow-sm outline-hidden"
+      />
+      <button onClick={() => next && onChange(next)} disabled={!next} aria-label="اليوم التالي" title="اليوم التالي" className={btn}>
+        <ChevronLeft className="size-5" />
+      </button>
+      {value !== today && (
+        <button onClick={() => onChange(today)} className="focus-ring h-10 rounded-lg px-3 text-sm font-bold text-brand hover:bg-surface">
+          اليوم
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function MonthSelect({ value, onChange, months }: { value: string; onChange: (m: string) => void; months: string[] }) {
+  const list = months.includes(value) ? months : [value, ...months];
+  return (
+    <select
+      aria-label="الشهر"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="focus-ring h-11 rounded-xl border-0 bg-sunken px-3 text-sm font-bold"
+    >
+      {list.map((m) => (
+        <option key={m} value={m}>
+          {monthLabel(m)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+const TONES = {
+  ink: { text: "text-ink", tile: "bg-sunken text-muted" },
+  brand: { text: "text-brand", tile: "bg-brand-soft text-brand" },
+  info: { text: "text-info", tile: "bg-info-soft text-info" },
+  ok: { text: "text-ok", tile: "bg-ok-soft text-ok" },
+  warn: { text: "text-warn", tile: "bg-warn-soft text-warn" },
+};
+
 export function StatCard({
   label,
   value,
   delta,
   tone = "ink",
+  icon: Icon,
+  hint,
+  suffix,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   delta?: number | null;
-  tone?: "ink" | "brand" | "info" | "ok";
+  tone?: keyof typeof TONES;
+  icon?: LucideIcon;
+  hint?: React.ReactNode;
+  suffix?: string;
 }) {
-  const cls = { ink: "text-ink", brand: "text-brand", info: "text-info", ok: "text-ok" }[tone];
+  const t = TONES[tone];
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
-      <div className="truncate text-[13px] font-semibold text-muted sm:text-sm">{label}</div>
-      <div className={cn("num mt-1.5 text-[28px] font-bold leading-none sm:mt-2 sm:text-[34px]", cls)}>{value.toLocaleString("en-US")}</div>
-      {delta !== undefined && delta !== null && (
-        <div
-          className={cn("mt-2 truncate text-xs font-semibold", delta > 0 ? "text-ok" : delta < 0 ? "text-bad" : "text-muted")}
-          title="مقارنة بيوم العمل السابق"
-        >
-          {delta === 0 ? "مثل السابق" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)}`}
-          <span className="hidden sm:inline">{delta === 0 ? "" : " عن يوم العمل السابق"}</span>
+    <div className="flex min-w-0 flex-col rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="truncate text-[13px] font-semibold text-muted sm:text-sm">{label}</div>
+        {Icon && (
+          <span className={cn("hidden size-9 shrink-0 place-items-center rounded-xl sm:grid", t.tile)} aria-hidden>
+            <Icon className="size-[18px]" />
+          </span>
+        )}
+      </div>
+      <div className={cn("num mt-1 text-[28px] font-bold leading-none sm:text-[32px]", t.text)}>
+        {typeof value === "number" ? value.toLocaleString("en-US") : value}
+        {suffix && <span className="ms-0.5 text-lg">{suffix}</span>}
+      </div>
+      <div className="mt-auto pt-2 text-xs font-semibold">
+        {delta !== undefined && delta !== null ? (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5",
+              delta > 0 ? "bg-ok-soft text-ok" : delta < 0 ? "bg-bad-soft text-bad" : "bg-sunken text-muted",
+            )}
+            title="مقارنة بيوم العمل السابق"
+          >
+            {delta === 0 ? "مثل السابق" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)}`}
+            <span className="hidden font-medium sm:inline">{delta === 0 ? "" : " عن السابق"}</span>
+          </span>
+        ) : hint ? (
+          <span className="block truncate text-muted">{hint}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function SectionHead({ title, sub, icon: Icon, actions }: { title: string; sub?: React.ReactNode; icon?: LucideIcon; actions?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3.5 sm:px-5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        {Icon && <Icon className="size-5 shrink-0 text-muted" />}
+        <div className="min-w-0">
+          <h2 className="text-base font-bold sm:text-lg">{title}</h2>
+          {sub && <p className="text-xs text-muted">{sub}</p>}
         </div>
-      )}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -98,7 +221,7 @@ export function ExportButton({ label, scope, size = "md" }: { label: string; sco
       onClick={() => toast(`تصدير ${scope} إلى Excel قيد التجهيز وسيتوفر قريباً`, "info")}
       className={cn(
         "focus-ring inline-flex items-center gap-2 rounded-xl border border-ok/40 bg-ok-soft font-bold text-ok hover:bg-ok/15",
-        size === "sm" ? "min-h-9 px-2.5 py-1 text-xs" : "px-4 py-2.5 text-sm",
+        size === "sm" ? "min-h-9 px-2.5 py-1 text-xs" : "min-h-10 px-3.5 py-2 text-sm",
       )}
     >
       <FileSpreadsheet className={size === "sm" ? "size-3.5" : "size-4"} />
@@ -107,11 +230,77 @@ export function ExportButton({ label, scope, size = "md" }: { label: string; sco
   );
 }
 
-export function Bar({ value, max, tone = "brand" }: { value: number; max: number; tone?: "brand" | "ok" }) {
+export function Bar({ value, max, tone = "brand", color }: { value: number; max: number; tone?: "brand" | "ok"; color?: string }) {
   const w = max ? Math.max((value / max) * 100, value ? 2 : 0) : 0;
   return (
     <div className="h-2.5 w-full overflow-hidden rounded-full bg-sunken">
-      <div className={cn("h-full rounded-full", tone === "brand" ? "bg-brand" : "bg-ok")} style={{ width: `${w}%` }} />
+      <div className={cn("h-full rounded-full", !color && (tone === "brand" ? "bg-brand" : "bg-ok"))} style={{ width: `${w}%`, background: color }} />
+    </div>
+  );
+}
+
+/** نسبة الخدمة = مخدوم في النقطة ÷ موجّه من الاستقبال */
+export function coverage(served: number, referred: number): number | null {
+  return referred ? Math.round((served / referred) * 100) : null;
+}
+
+export function CoverageBar({ served, referred, compact }: { served: number; referred: number; compact?: boolean }) {
+  const pct = coverage(served, referred);
+  const tone = pct === null ? "text-muted" : pct >= 80 ? "text-ok" : pct >= 50 ? "text-warn" : "text-bad";
+  const bg = pct === null ? "" : pct >= 80 ? "bg-ok" : pct >= 50 ? "bg-warn" : "bg-bad";
+  return (
+    <div className={cn("flex items-center gap-2.5", compact ? "w-full" : "min-w-[140px]")} title="نسبة الخدمة: المخدوم في النقطة من الموجّه من الاستقبال">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-sunken">
+        {pct !== null && <div className={cn("h-full rounded-full", bg)} style={{ width: `${Math.min(pct, 100)}%` }} />}
+      </div>
+      <span className={cn("num w-11 shrink-0 text-end text-sm font-bold", tone)}>{pct === null ? "—" : `${pct}%`}</span>
+    </div>
+  );
+}
+
+/** توزيع الحالات على ساعات اليوم */
+export function HourChart({ reception, point, height = 150 }: { reception: number[]; point: number[]; height?: number }) {
+  const total = reception.map((v, i) => v + point[i]);
+  const used = total.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+  if (!used.length) return <p className="py-10 text-center text-sm text-muted">لا توجد بيانات</p>;
+  const from = Math.min(...used);
+  const to = Math.max(...used);
+  const hours = Array.from({ length: to - from + 1 }, (_, k) => from + k);
+  const max = Math.max(...hours.map((h) => total[h]), 1);
+  const peak = hours.reduce((a, h) => (total[h] > total[a] ? h : a), hours[0]);
+  return (
+    <div>
+      <div className="flex items-end gap-1 sm:gap-1.5" style={{ height }} dir="ltr">
+        {hours.map((h) => (
+          <div key={h} className="group relative flex h-full flex-1 flex-col justify-end" title={`${hourLabel(h)}: استقبال ${reception[h]} · نقاط ${point[h]}`}>
+            <span className={cn("num mb-1 text-center text-[10px] font-bold", h === peak ? "text-ink" : "text-transparent group-hover:text-muted")}>{total[h]}</span>
+            <div className="flex flex-col overflow-hidden rounded-t-md" style={{ height: `${(total[h] / max) * 100}%`, minHeight: total[h] ? 3 : 0 }}>
+              <div className="bg-ok" style={{ flex: point[h] }} />
+              <div className="bg-brand" style={{ flex: reception[h] }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 flex gap-1 border-t border-line pt-1.5 sm:gap-1.5" dir="ltr">
+        {hours.map((h, i) => (
+          <span key={h} dir="rtl" className={cn("num flex-1 whitespace-nowrap text-center text-[10px] text-muted", i % (hours.length > 10 ? 2 : 1) && "invisible")}>
+            {hourLabel(h)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function Legend({ items }: { items: { label: string; cls: string }[] }) {
+  return (
+    <div className="flex flex-wrap gap-3 text-xs font-semibold text-muted">
+      {items.map((i) => (
+        <span key={i.label} className="inline-flex items-center gap-1.5">
+          <i className={cn("size-2.5 rounded-sm", i.cls)} />
+          {i.label}
+        </span>
+      ))}
     </div>
   );
 }
