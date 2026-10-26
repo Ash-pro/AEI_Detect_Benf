@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Clock3, Hourglass, Info, LayoutList, Share2, Stethoscope, Store, Trophy, UserPlus, Users } from "lucide-react";
+import { ChevronLeft, Clock3, CopyCheck, Hourglass, Info, LayoutList, Share2, Stethoscope, Store, Trophy, UserPlus, Users } from "lucide-react";
 import { CenterTabs, CoverageBar, DateStepper, ExportButton, FilterBar, HourChart, Legend, PageHead, SectionHead, StatCard, coverage } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { ShareDialog } from "@/components/entry/share-dialog";
@@ -11,6 +11,7 @@ import { useStore } from "@/lib/store";
 import { adminShareText, type CenterFilter, dayStats, filterCenter, hourly, workedDays } from "@/lib/queries";
 import { dayFull, formatTime, hourLabel, todayKey, weekday } from "@/lib/utils";
 import { projectColor } from "@/lib/project-colors";
+import { overlapReport } from "@/lib/overlap";
 
 /** الشاشة 4 — لوحة الأدمن الرئيسية */
 export default function AdminHome() {
@@ -34,6 +35,7 @@ export default function AdminHome() {
   const rows = s.projects.filter((x) => db.projects.find((pp) => pp.code === x.code)?.active || x.referred || x.served);
   const totals = rows.reduce((a, r) => ({ referred: a.referred + r.referred, served: a.served + r.served, waiting: a.waiting + r.waiting }), { referred: 0, served: 0, waiting: 0 });
   const pct = coverage(totals.served, totals.referred);
+  const dupToday = useMemo(() => overlapReport(db, date, date, center, "day").rows.length, [db, date, center]);
   const busiest = [...rows].sort((a, b) => b.referred - a.referred)[0];
   const sum = hours.reception.map((v, i) => v + hours.point[i]);
   const peak = sum.some(Boolean) ? sum.indexOf(Math.max(...sum)) : null;
@@ -217,6 +219,18 @@ export default function AdminHome() {
                 value={s.staff ? `${s.staff} · ${staffRec} استقبال، ${s.staff - staffRec} نقاط` : "—"}
               />
             </dl>
+            <Link
+              href="/admin/overlap"
+              className="flex items-center gap-3 border-t border-line bg-warn-soft/40 px-4 py-3 text-sm hover:bg-warn-soft sm:px-5"
+            >
+              <CopyCheck className="size-5 shrink-0 text-warn" />
+              <span className="flex-1">
+                <span className="block font-bold">هويات خدمها أكثر من مشروع اليوم</span>
+                <span className="block text-xs text-muted">افتح تقرير التكرار للتفاصيل</span>
+              </span>
+              <span className="num text-lg font-bold text-warn">{dupToday}</span>
+              <ChevronLeft className="size-4 text-muted" />
+            </Link>
           </Card>
 
           <Card className="overflow-hidden">

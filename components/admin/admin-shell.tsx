@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Download, CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Menu, Search, Settings, Users, X } from "lucide-react";
+import { CopyCheck, Download, CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Menu, Search, Settings, Users, X } from "lucide-react";
 import { BrandMark } from "@/components/shell/brand-mark";
 import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
@@ -20,6 +20,7 @@ const NAV: { href: string; label: string; short: string; icon: typeof LayoutDash
   { href: "/admin/days", label: "سجل الأيام", short: "الأيام", icon: CalendarDays, group: "daily", supervisor: true, main: true },
   { href: "/admin/beneficiaries", label: "المستفيدون", short: "المستفيدون", icon: Search, group: "daily", main: true },
   { href: "/admin/reports", label: "التقارير", short: "التقارير", icon: LineChart, group: "analysis" },
+  { href: "/admin/overlap", label: "تقرير التكرار", short: "التكرار", icon: CopyCheck, group: "analysis" },
   { href: "/admin/users", label: "المستخدمون", short: "المستخدمون", icon: Users, group: "manage", supervisor: true, main: true },
   { href: "/admin/projects", label: "المشاريع والمراكز", short: "المشاريع", icon: FolderKanban, group: "manage", supervisor: true },
   { href: "/admin/settings", label: "الإعدادات", short: "الإعدادات", icon: Settings, group: "manage" },
