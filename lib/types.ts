@@ -26,6 +26,8 @@ export interface User {
   role: Role;
   centers: CenterCode[];
   projects: string[];
+  /** صلاحيات المشرف (فارغة لباقي الأنواع؛ الأدمن يملك الكل) */
+  permissions: string[];
   active: boolean;
   createdAt: string;
 }

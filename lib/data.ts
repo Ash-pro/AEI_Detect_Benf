@@ -44,12 +44,12 @@ export async function loadProjects(sb: SupabaseClient): Promise<Project[]> {
 }
 
 interface ProfileRow {
-  id: string; username: string; full_name: string; role: Role; active: boolean; created_at: string;
+  id: string; username: string; full_name: string; role: Role; active: boolean; permissions: string[] | null; created_at: string;
   user_centers: { center_code: CenterCode }[]; user_projects: { project_code: string }[];
 }
 export async function loadUsers(sb: SupabaseClient): Promise<User[]> {
   const rows = await all<ProfileRow>((a, b) =>
-    sb.from("profiles").select("id, username, full_name, role, active, created_at, user_centers(center_code), user_projects(project_code)").order("created_at").range(a, b),
+    sb.from("profiles").select("id, username, full_name, role, active, permissions, created_at, user_centers(center_code), user_projects(project_code)").order("created_at").range(a, b),
   );
   return rows.map(toUser);
 }
@@ -62,6 +62,7 @@ export function toUser(p: ProfileRow): User {
     role: p.role,
     centers: p.user_centers.map((x) => x.center_code),
     projects: p.user_projects.map((x) => x.project_code),
+    permissions: p.permissions ?? [],
     active: p.active,
     createdAt: p.created_at,
   };
@@ -69,7 +70,7 @@ export function toUser(p: ProfileRow): User {
 export async function loadProfile(sb: SupabaseClient, id: string): Promise<User | null> {
   const { data } = await sb
     .from("profiles")
-    .select("id, username, full_name, role, active, created_at, user_centers(center_code), user_projects(project_code)")
+    .select("id, username, full_name, role, active, permissions, created_at, user_centers(center_code), user_projects(project_code)")
     .eq("id", id)
     .maybeSingle();
   return data ? toUser(data as ProfileRow) : null;

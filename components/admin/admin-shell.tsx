@@ -8,6 +8,7 @@ import { BrandMark } from "@/components/shell/brand-mark";
 import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { pathAllowed } from "@/lib/permissions";
 
 type Group = "daily" | "analysis" | "manage";
 const GROUPS: { id: Group; label: string }[] = [
@@ -30,10 +31,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { user, logout } = useStore();
-  const nav = user?.role === "SUPERVISOR" ? NAV.filter((n) => n.supervisor) : NAV;
+  // المشرف: الصفحات حسب صلاحياته فقط
+  const nav = NAV.filter((n) => pathAllowed(user, n.href));
   const [more, setMore] = useState(false);
   // الجوال: شريط سفلي بأهم الصفحات، والباقي في "المزيد"
-  const primary = user?.role === "SUPERVISOR" ? nav : nav.filter((n) => n.main);
+  const primary = nav.length <= 4 ? nav : nav.filter((n) => n.main).slice(0, 4);
   const secondary = nav.filter((n) => !primary.includes(n));
   const current = nav.find((n) => (n.href === "/admin" ? path === "/admin" : path.startsWith(n.href)) || (n.href === "/admin/days" && path.startsWith("/admin/day")));
   const isActive = (href: string) => (href === "/admin" ? path === "/admin" : path.startsWith(href)) || (href === "/admin/days" && path.startsWith("/admin/day"));

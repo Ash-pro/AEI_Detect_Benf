@@ -1,11 +1,12 @@
 import type { Beneficiary, Center, CenterCode, Db, Entry, IdType, Project, Settings, User } from "./types";
 import { assignQueue } from "./queue";
+import { DEFAULT_SUPERVISOR_PERMS } from "./permissions";
 import { withColors } from "./project-colors";
 import { addDays, isValidNationalId, todayKey } from "./utils";
 
 /* بيانات تجريبية للعرض والاختبار فقط — تُستبدل بـ Supabase لاحقاً */
 
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 export const CENTERS: Center[] = [
   { code: "GAZA", name: "مركز غزة", short: "غزة" },
@@ -42,11 +43,11 @@ const POINT_NAMES: Record<CenterCode, string[]> = {
 function seedUsers(): User[] {
   const created = addDays(todayKey(), -60) + "T08:00:00Z";
   const users: User[] = [
-    { id: "u-admin", username: "admin", password: DEMO_PASSWORD, fullName: "مدير النظام", role: "ADMIN", centers: BOTH, projects: [], active: true, createdAt: created },
-    { id: "u-sup", username: "supervisor", password: DEMO_PASSWORD, fullName: "مشرف النظام", role: "SUPERVISOR", centers: BOTH, projects: [], active: true, createdAt: created },
-    { id: "u-rg", username: "reception.gaza", password: DEMO_PASSWORD, fullName: "هناء أبو شعبان", role: "RECEPTION", centers: ["GAZA"], projects: [], active: true, createdAt: created },
-    { id: "u-rk", username: "reception.khy", password: DEMO_PASSWORD, fullName: "سماح الأسطل", role: "RECEPTION", centers: ["KHY"], projects: [], active: true, createdAt: created },
-    { id: "u-rx", username: "reception.both", password: DEMO_PASSWORD, fullName: "ياسر عودة", role: "RECEPTION", centers: BOTH, projects: [], active: false, createdAt: created },
+    { id: "u-admin", username: "admin", password: DEMO_PASSWORD, fullName: "مدير النظام", role: "ADMIN", centers: BOTH, projects: [], permissions: [], active: true, createdAt: created },
+    { id: "u-sup", username: "supervisor", password: DEMO_PASSWORD, fullName: "مشرف النظام", role: "SUPERVISOR", centers: BOTH, projects: [], permissions: [...DEFAULT_SUPERVISOR_PERMS], active: true, createdAt: created },
+    { id: "u-rg", username: "reception.gaza", password: DEMO_PASSWORD, fullName: "هناء أبو شعبان", role: "RECEPTION", centers: ["GAZA"], projects: [], permissions: [], active: true, createdAt: created },
+    { id: "u-rk", username: "reception.khy", password: DEMO_PASSWORD, fullName: "سماح الأسطل", role: "RECEPTION", centers: ["KHY"], projects: [], permissions: [], active: true, createdAt: created },
+    { id: "u-rx", username: "reception.both", password: DEMO_PASSWORD, fullName: "ياسر عودة", role: "RECEPTION", centers: BOTH, projects: [], permissions: [], active: false, createdAt: created },
   ];
   for (const c of BOTH) {
     SEED_PROJECTS.forEach((p, i) => {
@@ -60,6 +61,7 @@ function seedUsers(): User[] {
         role: "POINT",
         centers: [c],
         projects: [p.code],
+        permissions: [],
         active: true,
         createdAt: created,
       });
@@ -73,6 +75,19 @@ function seedUsers(): User[] {
     role: "POINT",
     centers: ["KHY"],
     projects: ["WFP", "CELIAC"],
+    permissions: [],
+    active: true,
+    createdAt: created,
+  });
+  users.push({
+    id: "u-sup-view",
+    username: "supervisor.view",
+    password: DEMO_PASSWORD,
+    fullName: "مشرفة متابعة",
+    role: "SUPERVISOR",
+    centers: BOTH,
+    projects: [],
+    permissions: ["home", "days", "beneficiaries", "reports", "overlap"],
     active: true,
     createdAt: created,
   });

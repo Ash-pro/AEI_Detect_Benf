@@ -2,6 +2,7 @@
 
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 import { canManageUser, isStaff } from "@/lib/roles";
+import { PERMS, DEFAULT_SUPERVISOR_PERMS } from "@/lib/permissions";
 import type { CenterCode, Role } from "@/lib/types";
 
 /* إدارة الحسابات على الخادم: تحتاج المفتاح السري لإنشاء حسابات Supabase Auth */
@@ -13,6 +14,8 @@ export interface UserInput {
   role: Role;
   centers: CenterCode[];
   projects: string[];
+  /** صلاحيات المشرف — يحددها الأدمن فقط */
+  permissions?: string[];
   active: boolean;
   /** للإنشاء، أو لإعادة التعيين عند التعديل */
   password?: string;
@@ -28,9 +31,9 @@ async function caller() {
   const sb = await supabaseServer();
   const { data } = await sb.auth.getUser();
   if (!data.user) return null;
-  const { data: p } = await supabaseAdmin().from("profiles").select("id, role, active").eq("id", data.user.id).single();
+  const { data: p } = await supabaseAdmin().from("profiles").select("id, role, active, permissions").eq("id", data.user.id).single();
   if (!p || !p.active) return null;
-  return { id: p.id as string, role: p.role as Role };
+  return { id: p.id as string, role: p.role as Role, permissions: (p.permissions ?? []) as string[] };
 }
 
 async function log(userId: string, action: string, detail: string) {
@@ -39,7 +42,7 @@ async function log(userId: string, action: string, detail: string) {
 
 export async function saveUserAction(input: UserInput): Promise<Result> {
   const me = await caller();
-  if (!me || (me.role !== "ADMIN" && me.role !== "SUPERVISOR")) return { ok: false, error: "غير مسموح" };
+  if (!me || (me.role !== "ADMIN" && !(me.role === "SUPERVISOR" && me.permissions.includes("users")))) return { ok: false, error: "غير مسموح" };
 
   const username = input.username.trim().toLowerCase();
   const fullName = input.fullName.trim();
@@ -54,12 +57,19 @@ export async function saveUserAction(input: UserInput): Promise<Result> {
   if (isStaff(input.role) && !centers.length) return { ok: false, error: "اختر مركزاً واحداً على الأقل" };
   if (input.role === "POINT" && !projects.length) return { ok: false, error: "اختر مشروعاً واحداً على الأقل" };
 
+  // الصلاحيات للمشرف فقط، والأدمن وحده يحددها
+  const valid = new Set<string>(PERMS.map((x) => x.key));
+  const wanted = input.role === "SUPERVISOR" ? (input.permissions ?? DEFAULT_SUPERVISOR_PERMS).filter((x) => valid.has(x)) : [];
+
   const admin = supabaseAdmin();
   const { data: taken } = await admin.from("profiles").select("id").eq("username", username).maybeSingle();
   if (taken && taken.id !== input.id) return { ok: false, error: "اسم المستخدم مستخدم لحساب آخر" };
 
   let id = input.id;
-  const existing = id ? (await admin.from("profiles").select("id, role, active, username").eq("id", id).maybeSingle()).data : null;
+  const existing = id ? (await admin.from("profiles").select("id, role, active, username, permissions").eq("id", id).maybeSingle()).data : null;
+  // غير الأدمن لا يغيّر الصلاحيات: تبقى كما هي
+  const permissions = me.role === "ADMIN" ? wanted : ((existing?.permissions as string[] | undefined) ?? []);
+  const permsChanged = Boolean(existing) && JSON.stringify([...(existing?.permissions ?? [])].sort()) !== JSON.stringify([...permissions].sort());
 
   if (existing) {
     if (!canManageUser(me.role, existing.role as Role)) return { ok: false, error: "لا تملك صلاحية تعديل هذا الحساب" };
@@ -75,14 +85,17 @@ export async function saveUserAction(input: UserInput): Promise<Result> {
       const { error } = await admin.auth.admin.updateUserById(existing.id, { ...authPatch, email_confirm: true });
       if (error) return { ok: false, error: "تعذّر تحديث بيانات الدخول: " + error.message };
     }
-    const { error } = await admin.from("profiles").update({ username, full_name: fullName, role: input.role, active: input.active }).eq("id", existing.id);
+    const { error } = await admin
+      .from("profiles")
+      .update({ username, full_name: fullName, role: input.role, active: input.active, permissions })
+      .eq("id", existing.id);
     if (error) return { ok: false, error: error.message };
   } else {
     if (!input.password) return { ok: false, error: "كلمة المرور مطلوبة" };
     const { data, error } = await admin.auth.admin.createUser({ email: toEmail(username), password: input.password, email_confirm: true });
     if (error || !data.user) return { ok: false, error: "تعذّر إنشاء الحساب: " + (error?.message ?? "") };
     id = data.user.id;
-    const { error: pErr } = await admin.from("profiles").insert({ id, username, full_name: fullName, role: input.role, active: input.active });
+    const { error: pErr } = await admin.from("profiles").insert({ id, username, full_name: fullName, role: input.role, active: input.active, permissions });
     if (pErr) {
       await admin.auth.admin.deleteUser(id);
       return { ok: false, error: pErr.message };
@@ -95,14 +108,14 @@ export async function saveUserAction(input: UserInput): Promise<Result> {
   if (centers.length) await admin.from("user_centers").insert(centers.map((c) => ({ user_id: id, center_code: c })));
   if (projects.length) await admin.from("user_projects").insert(projects.map((p) => ({ user_id: id, project_code: p })));
 
-  const what = !existing ? "إنشاء مستخدم" : input.password ? "تعديل مستخدم وكلمة المرور" : "تعديل مستخدم";
+  const what = !existing ? "إنشاء مستخدم" : input.password ? "تعديل مستخدم وكلمة المرور" : permsChanged ? "تعديل صلاحيات مشرف" : "تعديل مستخدم";
   await log(me.id, what, `${fullName} (${username})`);
   return { ok: true, id: id! };
 }
 
 export async function deleteUserAction(id: string): Promise<Result> {
   const me = await caller();
-  if (!me || (me.role !== "ADMIN" && me.role !== "SUPERVISOR")) return { ok: false, error: "غير مسموح" };
+  if (!me || (me.role !== "ADMIN" && !(me.role === "SUPERVISOR" && me.permissions.includes("users")))) return { ok: false, error: "غير مسموح" };
   if (id === me.id) return { ok: false, error: "لا يمكنك حذف حسابك" };
   const admin = supabaseAdmin();
   const { data: target } = await admin.from("profiles").select("id, role, full_name, username").eq("id", id).maybeSingle();

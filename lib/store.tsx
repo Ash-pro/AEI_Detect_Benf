@@ -472,6 +472,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         role: u.role,
         centers: u.centers,
         projects: u.projects,
+        permissions: u.permissions,
         active: u.active,
         password: u.password || undefined,
       });

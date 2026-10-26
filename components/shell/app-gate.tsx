@@ -24,7 +24,7 @@ export function AppGate({ children, area }: { children: React.ReactNode; area: "
     if (!ready) return;
     if (!user && !center) router.replace("/setup");
     else if (!user) router.replace("/login");
-    else if (wrongArea) router.replace(homePath(user.role));
+    else if (wrongArea) router.replace(homePath(user.role, user.permissions));
     else if (isStaff(user.role) && !center) router.replace("/setup");
   }, [ready, center, user, wrongArea, router]);
 

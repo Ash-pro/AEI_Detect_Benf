@@ -9,13 +9,15 @@ import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
+import { can } from "@/lib/permissions";
 import { entriesOf } from "@/lib/queries";
 import type { Entry } from "@/lib/types";
 import { dateKey, formatDate, normalizeArabicName, normalizeDigits, todayKey } from "@/lib/utils";
 
 /** الشاشة 10 — المستفيدون والإدخالات */
 export default function BeneficiariesPage() {
-  const { db } = useStore();
+  const { db, user } = useStore();
+  const canEdit = can(user, "edit_entries");
   const [q, setQ] = useState("");
   const [nid, setNid] = useState<string | null>(null);
   const [edit, setEdit] = useState<Entry | null>(null);
@@ -61,7 +63,11 @@ export default function BeneficiariesPage() {
                 className="h-11 w-full rounded-xl border border-line bg-surface ps-9 pe-9 outline-hidden focus:border-brand"
               />
               {q && (
-                <button onClick={() => setQ("")} aria-label="مسح البحث" className="absolute end-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-sunken">
+                <button
+                  onClick={() => setQ("")}
+                  aria-label="مسح البحث"
+                  className="absolute end-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-sunken"
+                >
                   <X className="size-4" />
                 </button>
               )}
@@ -75,7 +81,8 @@ export default function BeneficiariesPage() {
                   onClick={() => {
                     setNid(r.nid);
                     // الجوال: الانتقال للتفاصيل أسفل النتائج
-                    if (window.innerWidth < 1024) requestAnimationFrame(() => document.getElementById("benef-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+                    if (window.innerWidth < 1024)
+                      requestAnimationFrame(() => document.getElementById("benef-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
                   }}
                   className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-start hover:bg-sunken/60 ${nid === r.nid ? "bg-brand-soft" : ""}`}
                 >
@@ -102,7 +109,14 @@ export default function BeneficiariesPage() {
         {b ? (
           <Card id="benef-detail" className="scroll-mt-20 overflow-hidden">
             <div className="space-y-3 border-b border-line p-5">
-              <BeneficiaryEditor key={b.nid} beneficiary={b} />
+              {canEdit ? (
+                <BeneficiaryEditor key={b.nid} beneficiary={b} />
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xl font-bold">{b.name || "بدون اسم"}</span>
+                  <IdTypeTag type={b.type} />
+                </div>
+              )}
               <div className="text-sm text-muted">
                 <span className="num font-bold text-ink">{b.nid}</span> · مسجلة منذ <span className="num">{formatDate(b.createdAt)}</span> ·{" "}
                 <span className="num">{history.length}</span> إدخال
@@ -115,9 +129,15 @@ export default function BeneficiariesPage() {
                   e={e}
                   db={db}
                   action={
-                    <button onClick={() => setEdit(e)} className="focus-ring grid size-8 place-items-center rounded-lg text-brand hover:bg-brand-soft" aria-label="تعديل">
-                      <Pencil className="size-4" />
-                    </button>
+                    canEdit && (
+                      <button
+                        onClick={() => setEdit(e)}
+                        className="focus-ring grid size-8 place-items-center rounded-lg text-brand hover:bg-brand-soft"
+                        aria-label="تعديل"
+                      >
+                        <Pencil className="size-4" />
+                      </button>
+                    )
                   }
                 />
               ))}

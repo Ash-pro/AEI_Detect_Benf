@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight, FileSpreadsheet, type LucideIcon } from "lucide-react";
 import type { CenterFilter } from "@/lib/queries";
 import { useStore } from "@/lib/store";
+import { can } from "@/lib/permissions";
 import { useToast } from "@/components/ui/toast";
 import { addDays, cn, hourLabel, monthLabel, todayKey } from "@/lib/utils";
 
@@ -216,6 +217,8 @@ export function SectionHead({ title, sub, icon: Icon, actions }: { title: string
 /** زر تصدير Excel — التصدير الفعلي قيد التجهيز */
 export function ExportButton({ label, scope, size = "md" }: { label: string; scope: string; size?: "sm" | "md" }) {
   const toast = useToast();
+  const { user } = useStore();
+  if (!can(user, "export")) return null;
   return (
     <button
       onClick={() => toast(`تصدير ${scope} إلى Excel قيد التجهيز وسيتوفر قريباً`, "info")}

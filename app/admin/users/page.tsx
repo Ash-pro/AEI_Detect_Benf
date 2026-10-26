@@ -2,7 +2,8 @@
 
 import { useBusy } from "@/lib/use-busy";
 import { useMemo, useState } from "react";
-import { Plus, Search, UserRound } from "lucide-react";
+import { Plus, Search, ShieldCheck, UserRound } from "lucide-react";
+import { PERMS } from "@/lib/permissions";
 import { RowMenu } from "@/components/admin/row-menu";
 import { PageHead, Segmented } from "@/components/admin/bits";
 import {
@@ -197,7 +198,7 @@ export default function UsersPage() {
                 <th className="px-5 py-3 text-start font-semibold">الموظف</th>
                 <th className="px-3 py-3 text-start font-semibold">النوع</th>
                 <th className="px-3 py-3 text-start font-semibold">المراكز</th>
-                <th className="px-3 py-3 text-start font-semibold">المشاريع</th>
+                <th className="px-3 py-3 text-start font-semibold">المشاريع / الصلاحيات</th>
                 <th className="px-3 py-3 text-center font-semibold">اليوم</th>
                 <th className="px-3 py-3 text-start font-semibold">آخر نشاط</th>
                 <th className="px-3 py-3 text-center font-semibold">مفعّل</th>
@@ -229,7 +230,9 @@ export default function UsersPage() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {u.projects.length ? (
+                        {u.role === "SUPERVISOR" ? (
+                          <PermsButton u={u} editable={me?.role === "ADMIN"} onEdit={() => openEdit(u)} />
+                        ) : u.projects.length ? (
                           u.projects.map((p) => (
                             <span key={p} className="rounded-md bg-sunken px-1.5 py-0.5 text-xs font-bold">
                               {projectName(db, p)}
@@ -288,6 +291,7 @@ export default function UsersPage() {
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <RoleBadge role={u.role} />
                   {isStaff(u.role) && <span className="text-xs font-semibold text-muted">{u.centers.map((c) => centerName(db, c, true)).join("، ")}</span>}
+                  {u.role === "SUPERVISOR" && <PermsButton u={u} editable={me?.role === "ADMIN"} onEdit={() => openEdit(u)} />}
                   {u.projects.map((p) => (
                     <span key={p} className="rounded-md bg-sunken px-1.5 py-0.5 text-xs font-bold">
                       {projectName(db, p)}
@@ -329,5 +333,28 @@ export default function UsersPage() {
       <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />
       <UserDetailDialog user={viewing} onClose={() => setViewing(null)} onEdit={viewing && can(viewing) ? openEdit : undefined} />
     </>
+  );
+}
+
+/** عدد صلاحيات المشرف — والضغط عليه يفتح تعديلها */
+function PermsButton({ u, editable, onEdit }: { u: User; editable: boolean; onEdit: () => void }) {
+  const n = u.permissions.length;
+  const body = (
+    <>
+      <ShieldCheck className="size-3.5" />
+      <span className="num">{n}</span> {n === 1 ? "صلاحية" : "صلاحيات"}
+    </>
+  );
+  const cls = cn(
+    "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-bold",
+    n ? "bg-brand-soft text-brand" : "bg-warn-soft text-warn",
+  );
+  return editable ? (
+    <button onClick={onEdit} className={cn(cls, "min-h-7 hover:ring-2 hover:ring-brand/30")} title={PERMS.filter((p) => u.permissions.includes(p.key)).map((p) => p.label).join("، ")}>
+      {body}
+      <span className="font-semibold opacity-70">· تعديل</span>
+    </button>
+  ) : (
+    <span className={cls}>{body}</span>
   );
 }

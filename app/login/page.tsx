@@ -33,7 +33,7 @@ function LoginInner() {
 
   useEffect(() => {
     if (!ready) return;
-    if (user) router.replace(homePath(user.role));
+    if (user) router.replace(homePath(user.role, user.permissions));
     else if (!center) router.replace("/setup");
   }, [ready, center, user, router]);
 
@@ -59,7 +59,7 @@ function LoginInner() {
       if (cred) pRef.current?.select();
       return;
     }
-    router.replace(homePath(r.user!.role));
+    router.replace(homePath(r.user!.role, r.user!.permissions));
   }
 
   if (!ready || !center) return <PageLoader />;

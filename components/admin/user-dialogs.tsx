@@ -15,11 +15,13 @@ import { allProjects, lastActivity } from "@/lib/queries";
 import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatDate, formatTime, sinceText, todayKey, uuid } from "@/lib/utils";
 import { useBusy } from "@/lib/use-busy";
+import { DEFAULT_SUPERVISOR_PERMS } from "@/lib/permissions";
+import { PermissionChips, PermissionsPicker } from "./permissions-picker";
 
 export const ROLE_META: Record<Role, { label: string; desc: string; icon: typeof Store; cls: string }> = {
   RECEPTION: { label: "استقبال", desc: "يدخل هوية الحالة ويحوّلها للمشاريع", icon: Store, cls: "bg-info-soft text-info" },
   POINT: { label: "نقطة مشروع", desc: "يدخل كل حالة يخدمها في مشروعه", icon: Stethoscope, cls: "bg-ok-soft text-ok" },
-  SUPERVISOR: { label: "مشرف", desc: "يرى سجل الأيام وتفاصيلها والتصدير فقط", icon: ClipboardList, cls: "bg-warn-soft text-warn" },
+  SUPERVISOR: { label: "مشرف", desc: "صلاحيات يحددها الأدمن: متابعة وتقارير وإدارة", icon: ClipboardList, cls: "bg-warn-soft text-warn" },
   ADMIN: { label: "أدمن", desc: "لوحة التحكم الكاملة وإدارة الموقع", icon: ShieldCheck, cls: "bg-brand-soft text-brand" },
 };
 
@@ -75,6 +77,7 @@ const EMPTY_USER = (): User => ({
   role: "RECEPTION",
   centers: [],
   projects: [],
+  permissions: [],
   active: true,
   createdAt: new Date().toISOString(),
 });
@@ -100,7 +103,12 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
   }, [open, user]);
 
   const set = <K extends keyof User>(k: K, v: User[K]) => {
-    setF((x) => ({ ...x, [k]: v }));
+    setF((x) => {
+      const next = { ...x, [k]: v };
+      // أول ما يصير الحساب مشرفاً: الصلاحيات الافتراضية
+      if (k === "role" && v === "SUPERVISOR" && !x.permissions.length) next.permissions = [...DEFAULT_SUPERVISOR_PERMS];
+      return next;
+    });
     setErrors((e) => ({ ...e, [k]: "" }));
   };
   const toggle = <T extends string>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
@@ -124,6 +132,7 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
       password: isEdit && newPass ? newPass : f.password,
       centers: isStaff(f.role) ? f.centers : (["GAZA", "KHY"] as CenterCode[]),
       projects: f.role === "POINT" ? f.projects : [],
+      permissions: f.role === "SUPERVISOR" ? f.permissions : [],
     };
     setBusy(true);
     const e = await saveUser(final);
@@ -290,6 +299,10 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
           <FieldError>{errors.password}</FieldError>
           <FieldError>{errors.form}</FieldError>
         </div>
+
+        {f.role === "SUPERVISOR" && me?.role === "ADMIN" && (
+          <PermissionsPicker value={f.permissions} onChange={(v) => set("permissions", v)} />
+        )}
 
         {isStaff(f.role) && (
           <fieldset>
@@ -542,6 +555,12 @@ export function UserDetailDialog({ user, onClose, onEdit }: { user: User | null;
             </span>
           ))}
         </div>
+        {user.role === "SUPERVISOR" && (
+          <div className="rounded-xl border border-line p-3">
+            <div className="mb-2 text-xs font-bold text-muted">الصلاحيات</div>
+            <PermissionChips value={user.permissions} />
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           {tiles.map((t) => (
             <div key={t.label} className="rounded-xl border border-line p-3">

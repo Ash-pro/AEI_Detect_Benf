@@ -11,6 +11,7 @@ import { projectColor, projectSoft } from "@/lib/project-colors";
 import { IdTypeTag } from "@/components/entry/id-fields";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
+import { can } from "@/lib/permissions";
 import { type CenterFilter, centerName, dayStats, filterCenter, userName, workedDays } from "@/lib/queries";
 import type { Entry } from "@/lib/types";
 import { cn, dayFull, formatTime, normalizeArabicName, normalizeDigits, todayKey, weekday } from "@/lib/utils";
@@ -23,7 +24,7 @@ function DayInner() {
   const router = useRouter();
   const path = usePathname();
   const { db, user } = useStore();
-  const canEdit = user?.role === "ADMIN";
+  const canEdit = can(user, "edit_entries");
   const date = params.get("d") || todayKey();
   const isToday = date === todayKey();
   const [center, setCenter] = useState<CenterFilter>((params.get("c") as CenterFilter) || "ALL");
