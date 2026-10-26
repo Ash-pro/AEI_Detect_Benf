@@ -1,5 +1,6 @@
 "use client";
 
+import { tracked } from "./pending";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
@@ -541,11 +542,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [loadAll]);
 
   const value = useMemo<Ctx>(
-    () => ({
-      ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
-      addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
-      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings,
-    }),
+    () =>
+      // كل عملية مع قاعدة البيانات تُظهر شريط التقدّم العلوي
+      tracked<Ctx>(
+        {
+          ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
+          addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
+          saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings,
+        },
+        ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings"],
+      ),
     [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
   );
 

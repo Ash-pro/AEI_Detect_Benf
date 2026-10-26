@@ -1,5 +1,6 @@
 "use client";
 
+import { useBusy } from "@/lib/use-busy";
 import { useMemo, useState } from "react";
 import { Plus, Search, UserRound } from "lucide-react";
 import { RowMenu } from "@/components/admin/row-menu";
@@ -77,14 +78,16 @@ export default function UsersPage() {
     supervisor: db.users.filter((u) => u.role === "SUPERVISOR").length,
   };
 
+  const { busy, run } = useBusy();
   function toggleActive(u: User) {
     if (!canManageUser(me?.role, u.role)) return toast("لا تملك صلاحية تعديل هذا الحساب", "bad");
     if (u.id === me?.id) return toast("لا يمكنك إيقاف حسابك أنت", "bad");
     if (u.role === "ADMIN" && u.active && db.users.filter((x) => x.role === "ADMIN" && x.active).length <= 1)
       return toast("لا يمكن إيقاف آخر حساب أدمن مفعّل", "bad");
-    void saveUser({ ...u, active: !u.active }).then((e) =>
-      toast(e ?? (u.active ? `تم إيقاف حساب ${u.fullName}` : `تم تفعيل حساب ${u.fullName}`), e ? "bad" : "ok"),
-    );
+    void run(u.id, async () => {
+      const e = await saveUser({ ...u, active: !u.active });
+      toast(e ?? (u.active ? `تم إيقاف حساب ${u.fullName}` : `تم تفعيل حساب ${u.fullName}`), e ? "bad" : "ok");
+    });
   }
 
   const openEdit = (u: User) => {
@@ -248,7 +251,7 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <Switch checked={u.active} disabled={!can(u)} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
+                      <Switch checked={u.active} disabled={!can(u)} loading={busy === u.id} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
                     </td>
                     <td className="px-2 py-3">
                       <RowMenu
@@ -296,7 +299,7 @@ export default function UsersPage() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
-                <Switch checked={u.active} disabled={!can(u)} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
+                <Switch checked={u.active} disabled={!can(u)} loading={busy === u.id} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
                 <RowMenu
                   onView={() => setViewing(u)}
                   onEdit={() => openEdit(u)}

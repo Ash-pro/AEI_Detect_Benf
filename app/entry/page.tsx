@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, RotateCcw, ChevronDown, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
 import { AppGate } from "@/components/shell/app-gate";
 import { StaffHeader } from "@/components/shell/app-header";
 import { IdInput } from "@/components/entry/id-input";
@@ -12,6 +12,7 @@ import { RoutingDialog, RoutingPanel } from "@/components/entry/routing";
 import { StatsStrip } from "@/components/entry/stats-strip";
 import { IdFields, IdTypeTag } from "@/components/entry/id-fields";
 import { QueueList } from "@/components/entry/queue-list";
+import { UndoEntryDialog, canUndo } from "@/components/entry/undo-dialog";
 import { DayLog } from "@/components/entry/day-log";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,9 +29,9 @@ import {
   type StaffStats,
   visibleHistory,
 } from "@/lib/queries";
-import { idTypeLabel, type QueueItem, waitingCount } from "@/lib/queue";
+import { idTypeLabel, pointQueue, type QueueItem, waitingCount } from "@/lib/queue";
 import { projectColor, projectSoft } from "@/lib/project-colors";
-import type { IdType } from "@/lib/types";
+import type { Db, Entry, IdType } from "@/lib/types";
 import { cn, formatTime, normalizeDigits, storageGet, storageSet, todayKey } from "@/lib/utils";
 
 /** الشاشة 3 — شاشة الإدخال (الاستقبال والنقاط) */
@@ -189,6 +190,10 @@ function EntryScreen() {
   }
 
   const [busy, setBusy] = useState(false);
+  /* آخر حالة أدخلها موظف النقطة — للتراجع السريع */
+  const [lastServedId, setLastServedId] = useState<string | null>(null);
+  const [undo, setUndo] = useState<Entry | null>(null);
+  const lastServed = lastServedId ? db.entries.find((e) => e.id === lastServedId) : undefined;
 
   async function submit() {
     if (!nid || busy) return;
@@ -207,6 +212,7 @@ function EntryScreen() {
     const done = r.mode === "updated" ? r.entry.projects : selected.filter((p) => !r.skipped.includes(p));
     const names = done.map((p) => projectName(db, p)).join("، ");
     if (isPoint) {
+      setLastServedId(r.entry.id);
       toast(`تم إدخال الخدمة${queueRef ? ` — الدور ${queueRef.number}` : ""} — ${names}`);
       const back = Boolean(queueRef);
       reset();
@@ -247,9 +253,26 @@ function EntryScreen() {
 
   return (
     <main className={cn("mx-auto space-y-4 px-4 pb-24 pt-5", view === "log" ? "max-w-5xl" : "max-w-3xl")}>
+      <UndoEntryDialog
+        entry={undo}
+        onClose={() => setUndo(null)}
+        onDone={(e) => {
+          if (e.id === lastServedId) setLastServedId(null);
+          if (nid === e.nid) setSelected(preselect(nid, queueRef));
+        }}
+      />
       <div className="sticky top-[70px] z-30 -mx-4 bg-bg/90 px-4 pb-2 pt-1 backdrop-blur">
         <ViewTabs view={view} onChange={setView} waiting={waiting} isPoint={isPoint} />
       </div>
+
+      {isPoint && view !== "log" && canUndo(lastServed, u.id) && (
+        <LastServedBanner
+          db={db}
+          entry={lastServed}
+          onUndo={() => setUndo(lastServed)}
+          onClose={() => setLastServedId(null)}
+        />
+      )}
 
       {view === "log" ? (
         <DayLog
@@ -282,14 +305,9 @@ function EntryScreen() {
 
       {queueRef && <QueueRefBanner db={db} item={queueRef} nid={nid} onClear={() => { setQueueRef(null); if (nid) setSelected(preselect(nid, null)); }} />}
 
-      <IdInput ref={inputRef} value={raw} onChange={onChange} onEnter={() => (nid ? submit() : raw.length < 9 && setError("رقم الهوية يجب أن يكون 9 أرقام"))} onClear={reset} error={error} />
+      <IdInput ref={inputRef} value={raw} onChange={onChange} onEnter={() => (nid ? submit() : raw.length < 9 && setError("رقم الهوية يجب أن يكون 9 أرقام"))} onClear={reset} error={error} loading={Boolean(nid) && checking} />
 
-      {nid && checking && (
-        <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-line bg-surface px-4 py-6 text-sm font-semibold text-muted">
-          <span className="size-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-          جارٍ البحث عن الهوية…
-        </div>
-      )}
+      {nid && checking && <LookupSkeleton />}
 
       {nid && lookupError && (
         <div className="flex items-center justify-between gap-3 rounded-2xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">
@@ -304,7 +322,10 @@ function EntryScreen() {
       {!isPoint && cardEl}
 
       {nid && !checking && !lookupError && (
-        <Card className="animate-fade-up space-y-5 p-5">
+        <Card
+          aria-busy={busy || undefined}
+          className={cn("animate-fade-up space-y-5 p-5", busy && "pointer-events-none [&>*:not(:last-child)]:opacity-50 [&>*]:transition-opacity")}
+        >
           {isNew && (
             <>
               <div className="flex items-center gap-2.5 rounded-xl bg-warn-soft px-4 py-3 font-bold text-warn">
@@ -365,15 +386,38 @@ function EntryScreen() {
             </div>
           )}
 
+          {isPoint &&
+            myPointToday
+              .filter((e) => canUndo(e, u.id))
+              .map((e) => (
+                <div key={e.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-4 py-3 text-sm">
+                  <CheckCircle2 className="size-5 shrink-0 text-ok" />
+                  <span className="min-w-0 flex-1">
+                    أدخلتها في <b>{e.projects.map((x) => projectName(db, x)).join("، ")}</b> الساعة <span className="num">{formatTime(e.at)}</span>
+                  </span>
+                  <Button size="sm" variant="secondary" className="border-bad/30 text-bad hover:bg-bad-soft" onClick={() => setUndo(e)}>
+                    <RotateCcw className="size-4" />
+                    تراجع عن الإدخال
+                  </Button>
+                </div>
+              ))}
+
           <FieldError>{formError}</FieldError>
 
           {/* زر الإدخال ثابت أسفل الشاشة على الجوال حتى لا يحتاج الموظف للتمرير */}
           <div className="sticky bottom-0 z-10 -mx-5 -mb-5 flex gap-2 rounded-b-2xl border-t border-line bg-surface/95 px-5 py-3 backdrop-blur sm:static sm:mx-0 sm:mb-0 sm:border-0 sm:bg-transparent sm:p-0">
-            <Button variant="secondary" size="xl" className="px-5" onClick={reset}>
+            <Button variant="secondary" size="xl" className="px-5" onClick={reset} disabled={busy}>
               إلغاء
             </Button>
-            <Button size="xl" className="flex-1" disabled={!selected.length || busy} onClick={submit}>
-              {busy ? "جارٍ الحفظ…" : !isPoint && todayHere ? "تحديث إدخال اليوم" : isPoint ? "إدخال الخدمة" : "إدخال"}
+            <Button
+              size="xl"
+              className="flex-1"
+              disabled={!selected.length}
+              loading={busy}
+              loadingText="جارٍ الإدخال…"
+              onClick={submit}
+            >
+              {!isPoint && todayHere ? "تحديث إدخال اليوم" : isPoint ? "إدخال الخدمة" : "إدخال"}
             </Button>
           </div>
         </Card>
@@ -591,5 +635,49 @@ export default function EntryPage() {
       <StaffHeader />
       <EntryScreen />
     </AppGate>
+  );
+}
+
+/** هيكل مؤقت مكان بطاقة الهوية أثناء البحث */
+function LookupSkeleton() {
+  return (
+    <div role="status" aria-label="جارٍ البحث عن الهوية" className="animate-fade-in rounded-2xl border border-line bg-surface p-5 shadow-card">
+      <div className="flex items-center gap-4">
+        <span className="skeleton size-12 rounded-2xl" />
+        <span className="flex-1 space-y-2.5">
+          <span className="skeleton block h-4 w-2/5 rounded-md" />
+          <span className="skeleton block h-3 w-1/4 rounded-md" />
+        </span>
+      </div>
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <span className="skeleton block h-12 rounded-xl" />
+        <span className="skeleton block h-12 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
+/** شريط بعد إدخال الخدمة: تأكيد ما أُدخل مع زر تراجع */
+function LastServedBanner({ db, entry, onUndo, onClose }: { db: Db; entry: Entry; onUndo: () => void; onClose: () => void }) {
+  const b = db.beneficiaries[entry.nid];
+  const q = pointQueue(db, entry);
+  return (
+    <div role="status" className="flex animate-fade-up items-center gap-3 rounded-2xl border border-ok/30 bg-ok-soft px-4 py-3">
+      <CheckCircle2 className="size-6 shrink-0 text-ok" />
+      <span className="min-w-0 flex-1 text-sm">
+        <span className="block font-bold text-ok">تم إدخال الحالة</span>
+        <span className="block truncate text-ink/80">
+          {b?.name || entry.nid} · {entry.projects.map((p) => projectName(db, p)).join("، ")}
+          {q.number ? <span className="num"> · دور {q.number}</span> : null}
+        </span>
+      </span>
+      <Button size="sm" variant="secondary" className="shrink-0 border-bad/30 text-bad hover:bg-bad-soft" onClick={onUndo}>
+        <RotateCcw className="size-4" />
+        تراجع
+      </Button>
+      <button onClick={onClose} aria-label="إخفاء" className="focus-ring grid size-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface">
+        <X className="size-4" />
+      </button>
+    </div>
   );
 }

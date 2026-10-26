@@ -1,5 +1,6 @@
 "use client";
 
+import { tracked } from "./pending";
 /* وضع العرض التجريبي (NEXT_PUBLIC_DEMO=1): بيانات محلية في المتصفح بدون Supabase — للمراجعة والتجربة فقط */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,6 +33,21 @@ const strip = (u: User): SessionUser => {
   const { password: _p, ...rest } = u;
   return rest;
 };
+
+const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings"];
+const LATENCY = 450;
+function withLatency(ctx: Ctx, keys: (keyof Ctx)[]): Ctx {
+  const out = { ...ctx };
+  keys.forEach((k) => {
+    const fn = ctx[k];
+    if (typeof fn !== "function" || k === "lookup" || k === "refresh") return;
+    (out as Record<string, unknown>)[k] = async (...args: unknown[]) => {
+      await new Promise((r) => setTimeout(r, LATENCY));
+      return (fn as (...a: unknown[]) => unknown)(...args);
+    };
+  });
+  return out;
+}
 
 export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -408,7 +424,9 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   const saveSettings = useCallback((s: Settings) => setDb((d) => log({ ...d, settings: s }, "تعديل الإعدادات", "")), [log]);
 
   const value = useMemo<Ctx>(
-    () => ({
+    () =>
+      // العرض التجريبي: تأخير بسيط يحاكي زمن قاعدة البيانات حتى تظهر مؤشرات التحميل كما في الوضع الحقيقي
+      tracked<Ctx>(withLatency({
       ready,
       online,
       db,
@@ -432,7 +450,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       moveProject: async (c, d) => moveProject(c, d),
       renameCenter: async (c, n) => renameCenter(c, n),
       saveSettings: async (s) => (saveSettings(s), null),
-    }),
+    }, KEYS), KEYS),
     [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
   );
 

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ModeProvider } from "@/lib/site-mode";
 import { ToastProvider } from "@/components/ui/toast";
+import { GlobalProgress } from "@/components/ui/global-progress";
 import { PwaInstall } from "@/components/pwa/install";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-dvh font-sans" suppressHydrationWarning>
+        <GlobalProgress />
         <ModeProvider>
           <ToastProvider>
             {children}

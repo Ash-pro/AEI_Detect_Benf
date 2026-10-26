@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "./spinner";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "ok";
 type Size = "sm" | "md" | "lg" | "xl";
@@ -23,24 +24,40 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   variant?: Variant;
   size?: Size;
   block?: boolean;
+  /** أثناء تنفيذ العملية: مؤشر دوّار، والزر معطّل حتى لا يُضغط مرتين */
+  loading?: boolean;
+  /** نص الزر أثناء التحميل، مثل "جارٍ الحفظ…" */
+  loadingText?: string;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant = "primary", size = "md", block, type = "button", ...props },
+  { className, variant = "primary", size = "md", block, type = "button", loading, loadingText, disabled, children, ...props },
   ref,
 ) {
   return (
     <button
       ref={ref}
       type={type}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(
-        "focus-ring inline-flex select-none items-center justify-center font-semibold transition-colors disabled:pointer-events-none disabled:opacity-45",
+        "focus-ring inline-flex select-none items-center justify-center font-semibold transition-colors disabled:pointer-events-none",
+        loading ? "cursor-wait" : "disabled:opacity-45",
         variants[variant],
         sizes[size],
         block && "w-full",
         className,
       )}
       {...props}
-    />
+    >
+      {loading ? (
+        <>
+          <Spinner className={size === "sm" ? "size-4" : "size-5"} />
+          <span className="truncate">{loadingText ?? children}</span>
+        </>
+      ) : (
+        children
+      )}
+    </button>
   );
 });

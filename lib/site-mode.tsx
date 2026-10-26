@@ -6,6 +6,7 @@ import { supabase, usernameToEmail } from "./supabase/client";
 import { StoreProvider as LiveStoreProvider } from "./store";
 import { DemoStoreProvider } from "./demo-store";
 import { errorText } from "./data";
+import { PageLoader } from "@/components/ui/page-loader";
 
 /* وضع الموقع: حقيقي (Supabase) أو عرض تجريبي (بيانات محلية في المتصفح).
    يُحفظ في قاعدة البيانات ويطبَّق على كل الأجهزة، ويغيّره الأدمن من الإعدادات. */
@@ -90,7 +91,7 @@ export function ModeProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, []);
 
-  if (!mode) return <div className="min-h-dvh" />;
+  if (!mode) return <PageLoader />;
   const Store = mode === "demo" ? DemoStoreProvider : LiveStoreProvider;
 
   return (

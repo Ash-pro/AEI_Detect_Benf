@@ -169,8 +169,15 @@ export function RoutingDialog({
           <Button variant="secondary" size="lg" onClick={onClose}>
             إلغاء
           </Button>
-          <Button size="lg" className="sm:min-w-[220px]" disabled={!changed || !sel.length || busy} onClick={save}>
-            {busy ? "جارٍ الحفظ…" : create ? "تحويل وإعطاء رقم دور" : "حفظ التوجيه الصحيح"}
+          <Button
+            size="lg"
+            className="sm:min-w-[220px]"
+            disabled={!changed || !sel.length}
+            loading={busy}
+            loadingText={create ? "جارٍ التحويل…" : "جارٍ الحفظ…"}
+            onClick={save}
+          >
+            {create ? "تحويل وإعطاء رقم دور" : "حفظ التوجيه الصحيح"}
           </Button>
         </>
       }

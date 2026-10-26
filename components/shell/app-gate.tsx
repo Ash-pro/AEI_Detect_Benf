@@ -6,6 +6,7 @@ import { TimerReset } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { homePath, isBackOffice, isStaff } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import { PageLoader } from "@/components/ui/page-loader";
 
 const WARN_SECONDS = 60;
 
@@ -48,7 +49,7 @@ export function AppGate({ children, area }: { children: React.ReactNode; area: "
     };
   }, [user, logout, router, idle]);
 
-  if (!ready || !user || wrongArea || (isStaff(user.role) && !center)) return <div className="min-h-dvh" />;
+  if (!ready || !user || wrongArea || (isStaff(user.role) && !center)) return <PageLoader />;
 
   return (
     <>

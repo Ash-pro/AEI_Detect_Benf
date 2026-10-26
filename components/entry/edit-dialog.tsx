@@ -1,5 +1,6 @@
 "use client";
 
+import { useBusy } from "@/lib/use-busy";
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Info, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
@@ -63,6 +64,7 @@ export function BeneficiaryEditor({ beneficiary, open = true }: { beneficiary: B
   const [name, setName] = useState(beneficiary.name);
   const [type, setType] = useState<IdType | undefined>(beneficiary.type);
   const [err, setErr] = useState("");
+  const { busy, run } = useBusy();
 
   useEffect(() => {
     if (!open) return;
@@ -73,18 +75,19 @@ export function BeneficiaryEditor({ beneficiary, open = true }: { beneficiary: B
 
   const changed = name.trim() !== beneficiary.name || type !== beneficiary.type;
 
-  async function save() {
-    const e = await updateBeneficiary(beneficiary.nid, { name, type });
-    if (e) return setErr(e);
-    toast("تم حفظ بيانات الهوية");
-  }
+  const save = () =>
+    run("save", async () => {
+      const e = await updateBeneficiary(beneficiary.nid, { name, type });
+      if (e) return setErr(e);
+      toast("تم حفظ بيانات الهوية");
+    });
 
   return (
     <section className="rounded-2xl border border-line p-4">
       <h3 className="mb-3 text-sm font-bold">بيانات الهوية</h3>
       <IdFields idPrefix={`ed-${beneficiary.nid}`} name={name} type={type} onName={(v) => { setName(v); setErr(""); }} onType={setType} onEnter={() => changed && save()} />
       <div className="mt-3 flex items-center gap-3">
-        <Button size="sm" disabled={!changed} onClick={save}>
+        <Button size="sm" disabled={!changed} onClick={save} loading={busy === "save"} loadingText="جارٍ الحفظ…">
           حفظ البيانات
         </Button>
         <FieldError>{err}</FieldError>
@@ -100,6 +103,7 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
   const [newId, setNewId] = useState("");
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const { busy, run, any } = useBusy<"save" | "del" | "move">();
   const changed = sel.slice().sort().join() !== entry.projects.slice().sort().join();
   const options = projects.filter((p) => p.active || entry.projects.includes(p.code));
 
@@ -124,15 +128,19 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           size="sm"
-          disabled={!changed}
-          onClick={async () => {
-            const e = await updateEntryProjects(entry.id, sel);
-            if (e) setErr(e);
-            else {
-              setErr("");
-              toast("تم تعديل الإدخال");
-            }
-          }}
+          disabled={!changed || (any && busy !== "save")}
+          loading={busy === "save"}
+          loadingText="جارٍ الحفظ…"
+          onClick={() =>
+            run("save", async () => {
+              const e = await updateEntryProjects(entry.id, sel);
+              if (e) setErr(e);
+              else {
+                setErr("");
+                toast("تم تعديل الإدخال");
+              }
+            })
+          }
         >
           حفظ المشاريع
         </Button>
@@ -141,15 +149,20 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
             <Button
               size="sm"
               variant="danger"
-              onClick={async () => {
-                const e = await deleteEntry(entry.id);
-                if (e) return setErr(e);
-                toast("تم حذف الإدخال", "info");
-              }}
+              loading={busy === "del"}
+              loadingText="جارٍ الحذف…"
+              disabled={any && busy !== "del"}
+              onClick={() =>
+                run("del", async () => {
+                  const e = await deleteEntry(entry.id);
+                  if (e) return setErr(e);
+                  toast("تم حذف الإدخال", "info");
+                })
+              }
             >
               تأكيد الحذف
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>
+            <Button size="sm" variant="ghost" disabled={busy === "del"} onClick={() => setConfirmDel(false)}>
               تراجع
             </Button>
           </>
@@ -179,14 +192,18 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
           <Button
             variant="secondary"
             size="lg"
-            disabled={newId.length !== 9}
-            onClick={async () => {
-              const known = Boolean(db.beneficiaries[newId]);
-              const e = await moveEntry(entry.id, newId);
-              if (e) return setErr(e);
-              toast(known ? "نُقل الإدخال إلى الهوية الصحيحة المسجلة" : "تم تصحيح رقم الهوية");
-              onMoved(newId);
-            }}
+            disabled={newId.length !== 9 || (any && busy !== "move")}
+            loading={busy === "move"}
+            loadingText="جارٍ النقل…"
+            onClick={() =>
+              run("move", async () => {
+                const known = Boolean(db.beneficiaries[newId]);
+                const e = await moveEntry(entry.id, newId);
+                if (e) return setErr(e);
+                toast(known ? "نُقل الإدخال إلى الهوية الصحيحة المسجلة" : "تم تصحيح رقم الهوية");
+                onMoved(newId);
+              })
+            }
           >
             <ArrowLeftRight className="size-4" />
             نقل

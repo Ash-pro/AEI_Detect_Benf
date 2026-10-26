@@ -59,9 +59,9 @@ export function SiteModeCard() {
           </p>
         </div>
         {demo ? (
-          <Button size="lg" disabled={busy} onClick={() => goLive()}>
+          <Button size="lg" loading={busy && !login} loadingText="جارٍ التحويل…" onClick={() => goLive()}>
             <Database className="size-5" />
-            {busy ? "جارٍ التحويل…" : "الرجوع للوضع الحقيقي"}
+            الرجوع للوضع الحقيقي
           </Button>
         ) : (
           <Button size="lg" variant="secondary" disabled={busy} onClick={() => setConfirm(true)}>
@@ -87,8 +87,8 @@ export function SiteModeCard() {
             <Button variant="secondary" size="lg" onClick={() => setConfirm(false)}>
               إلغاء
             </Button>
-            <Button size="lg" disabled={busy} onClick={goDemo}>
-              {busy ? "جارٍ التشغيل…" : "تشغيل العرض التجريبي"}
+            <Button size="lg" loading={busy} loadingText="جارٍ التشغيل…" onClick={goDemo}>
+              تشغيل العرض التجريبي
             </Button>
           </>
         }
@@ -118,8 +118,8 @@ export function SiteModeCard() {
             <Button variant="secondary" size="lg" onClick={() => setLogin(false)}>
               إلغاء
             </Button>
-            <Button size="lg" disabled={busy || !username || !password} onClick={() => goLive({ username, password })}>
-              {busy ? "جارٍ التحقق…" : "تأكيد والرجوع"}
+            <Button size="lg" disabled={!username || !password} loading={busy} loadingText="جارٍ التحقق…" onClick={() => goLive({ username, password })}>
+              تأكيد والرجوع
             </Button>
           </>
         }

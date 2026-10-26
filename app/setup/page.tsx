@@ -7,12 +7,13 @@ import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { CENTER_STYLE } from "@/components/shell/center-theme";
+import { PageLoader } from "@/components/ui/page-loader";
 
 /** الشاشة 1 — اختيار المركز */
 export default function SetupPage() {
   const { db, center, setCenter, ready } = useStore();
   const router = useRouter();
-  if (!ready) return <div className="min-h-dvh" />;
+  if (!ready) return <PageLoader />;
 
   return (
     <AuthLayout footer="يُحفظ المركز على هذا الجهاز. يمكن تغييره من شاشة الدخول.">

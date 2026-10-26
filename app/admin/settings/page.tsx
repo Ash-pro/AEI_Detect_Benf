@@ -94,8 +94,8 @@ export default function SettingsPage() {
             <Button variant="secondary" onClick={() => setS(db.settings)} disabled={saving}>
               تراجع
             </Button>
-            <Button onClick={save} disabled={saving}>
-              {saving ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
+            <Button onClick={save} loading={saving} loadingText="جارٍ الحفظ…">
+              حفظ الإعدادات
             </Button>
           </div>
         </div>

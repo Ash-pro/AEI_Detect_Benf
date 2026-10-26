@@ -1,5 +1,7 @@
 "use client";
 
+import { useBusy } from "@/lib/use-busy";
+import { Spinner } from "@/components/ui/spinner";
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Building2, Check, Plus } from "lucide-react";
 import { PageHead } from "@/components/admin/bits";
@@ -78,16 +80,19 @@ export default function ProjectsPage() {
   const staffCount = (code: string) => db.users.filter((u) => u.projects.includes(code) && u.active).length;
 
   /** حفظ مع رسالة نجاح أو خطأ */
-  const save = async (p: Project, ok?: string) => {
-    const e = await saveProject(p);
-    if (e) toast(e, "bad");
-    else if (ok) toast(ok);
-  };
+  const { busy, run } = useBusy();
+  const save = (p: Project, ok: string | undefined, key: string) =>
+    run(key, async () => {
+      const e = await saveProject(p);
+      if (e) toast(e, "bad");
+      else if (ok) toast(ok);
+    });
+  const move = (code: string, dir: -1 | 1) => run(`${code}:${dir}`, () => moveProject(code, dir));
 
   const toggleCenter = (p: Project, c: CenterCode) => {
     const centers = p.centers.includes(c) ? p.centers.filter((x) => x !== c) : [...p.centers, c];
     if (!centers.length) return toast("المشروع يجب أن يظهر في مركز واحد على الأقل", "bad");
-    void save({ ...p, centers });
+    void save({ ...p, centers }, undefined, `${p.code}:${c}`);
   };
 
   return (
@@ -108,16 +113,17 @@ export default function ProjectsPage() {
         {list.map((p, i) => (
           <Card key={p.code} className={cn("p-4", !p.active && "bg-sunken/40")}>
             <div className="flex items-start gap-2">
-              <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`)} />
+              <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`, `${p.code}:color`)} />
               <div className="min-w-0 flex-1">
-                <NameCell project={p} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع")} />
+                <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
                 <code className="mt-0.5 block px-2 text-start text-[11px] text-muted">{p.code}</code>
               </div>
               <Switch
                 checked={p.active}
                 onChange={(v) => {
-                  void save({ ...p, active: v }, v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
+                  void save({ ...p, active: v }, v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`, `${p.code}:active`);
                 }}
+                loading={busy === `${p.code}:active`}
                 label={`تفعيل ${p.name}`}
               />
             </div>
@@ -128,14 +134,19 @@ export default function ProjectsPage() {
                   role="checkbox"
                   aria-checked={p.centers.includes(c.code)}
                   onClick={() => toggleCenter(p, c.code)}
+                  disabled={busy === `${p.code}:${c.code}`}
                   className={cn(
                     "focus-ring inline-flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 text-sm font-bold",
                     p.centers.includes(c.code) ? "border-brand bg-brand-soft text-brand" : "border-line text-muted",
                   )}
                 >
-                  <span className={cn("grid size-4 place-items-center rounded border-2", p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line")}>
-                    {p.centers.includes(c.code) && <Check className="size-3" strokeWidth={3} />}
-                  </span>
+                  {busy === `${p.code}:${c.code}` ? (
+                    <Spinner className="size-4 text-brand" />
+                  ) : (
+                    <span className={cn("grid size-4 place-items-center rounded border-2", p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line")}>
+                      {p.centers.includes(c.code) && <Check className="size-3" strokeWidth={3} />}
+                    </span>
+                  )}
                   {c.short}
                 </button>
               ))}
@@ -145,11 +156,11 @@ export default function ProjectsPage() {
                 موظفو النقطة <b className="num text-ink">{staffCount(p.code)}</b> · خدمات الشهر <b className="num text-ink">{monthCounts.get(p.code) ?? 0}</b>
               </span>
               <span className="flex gap-1">
-                <button disabled={i === 0} onClick={() => moveProject(p.code, -1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`رفع ${p.name}`}>
-                  <ArrowUp className="size-4" />
+                <button disabled={i === 0 || busy !== null} onClick={() => move(p.code, -1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`رفع ${p.name}`}>
+                  {busy === `${p.code}:-1` ? <Spinner className="size-4" /> : <ArrowUp className="size-4" />}
                 </button>
-                <button disabled={i === list.length - 1} onClick={() => moveProject(p.code, 1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`إنزال ${p.name}`}>
-                  <ArrowDown className="size-4" />
+                <button disabled={i === list.length - 1 || busy !== null} onClick={() => move(p.code, 1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`إنزال ${p.name}`}>
+                  {busy === `${p.code}:1` ? <Spinner className="size-4" /> : <ArrowDown className="size-4" />}
                 </button>
               </span>
             </div>
@@ -180,28 +191,28 @@ export default function ProjectsPage() {
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">
                       <button
-                        disabled={i === 0}
-                        onClick={() => moveProject(p.code, -1)}
+                        disabled={i === 0 || busy !== null}
+                        onClick={() => move(p.code, -1)}
                         className="focus-ring grid size-8 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
                         aria-label={`رفع ${p.name}`}
                       >
-                        <ArrowUp className="size-4" />
+                        {busy === `${p.code}:-1` ? <Spinner className="size-4" /> : <ArrowUp className="size-4" />}
                       </button>
                       <button
-                        disabled={i === list.length - 1}
-                        onClick={() => moveProject(p.code, 1)}
+                        disabled={i === list.length - 1 || busy !== null}
+                        onClick={() => move(p.code, 1)}
                         className="focus-ring grid size-8 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
                         aria-label={`إنزال ${p.name}`}
                       >
-                        <ArrowDown className="size-4" />
+                        {busy === `${p.code}:1` ? <Spinner className="size-4" /> : <ArrowDown className="size-4" />}
                       </button>
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`)} />
+                      <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`, `${p.code}:color`)} />
                       <div className="min-w-0 flex-1">
-                        <NameCell project={p} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع")} />
+                        <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
                         <code className="mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
                       </div>
                     </div>
@@ -213,12 +224,17 @@ export default function ProjectsPage() {
                         aria-checked={p.centers.includes(c.code)}
                         aria-label={`${p.name} في ${c.name}`}
                         onClick={() => toggleCenter(p, c.code)}
+                        disabled={busy === `${p.code}:${c.code}`}
                         className={cn(
                           "focus-ring relative mx-auto grid size-7 place-items-center rounded-md border-2 after:absolute after:-inset-2",
                           p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line",
                         )}
                       >
-                        {p.centers.includes(c.code) && <Check className="size-4" strokeWidth={3} />}
+                        {busy === `${p.code}:${c.code}` ? (
+                          <Spinner className={cn("size-4", !p.centers.includes(c.code) && "text-brand")} />
+                        ) : (
+                          p.centers.includes(c.code) && <Check className="size-4" strokeWidth={3} />
+                        )}
                       </button>
                     </td>
                   ))}
@@ -228,8 +244,9 @@ export default function ProjectsPage() {
                     <Switch
                       checked={p.active}
                       onChange={(v) => {
-                        void save({ ...p, active: v }, v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`);
+                        void save({ ...p, active: v }, v ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}. يختفي من الاختيار ويبقى في السجلات`, `${p.code}:active`);
                       }}
+                      loading={busy === `${p.code}:active`}
                       label={`تفعيل ${p.name}`}
                     />
                   </td>
@@ -243,7 +260,18 @@ export default function ProjectsPage() {
       <h2 className="mb-3 mt-10 text-lg font-bold">المراكز</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {db.centers.map((c) => (
-          <CenterCard key={c.code} code={c.code} name={c.name} onSave={(n) => (renameCenter(c.code, n), toast("تم حفظ اسم المركز"))} />
+          <CenterCard
+            key={c.code}
+            code={c.code}
+            name={c.name}
+            saving={busy === `center:${c.code}`}
+            onSave={(n) =>
+              run(`center:${c.code}`, async () => {
+                await renameCenter(c.code, n);
+                toast("تم حفظ اسم المركز");
+              })
+            }
+          />
         ))}
       </div>
 
@@ -252,7 +280,7 @@ export default function ProjectsPage() {
   );
 }
 
-function NameCell({ project, onSave }: { project: Project; onSave: (name: string) => void }) {
+function NameCell({ project, onSave, saving }: { project: Project; onSave: (name: string) => void; saving?: boolean }) {
   const [v, setV] = useState(project.name);
   const dirty = v.trim() !== project.name && v.trim();
   return (
@@ -264,8 +292,8 @@ function NameCell({ project, onSave }: { project: Project; onSave: (name: string
         onKeyDown={(e) => e.key === "Enter" && dirty && onSave(v.trim())}
         className="h-9 w-full max-w-[220px] rounded-lg border border-transparent bg-transparent px-2 font-bold hover:border-line focus:border-brand focus:bg-surface focus:outline-hidden"
       />
-      {dirty && (
-        <Button size="sm" onClick={() => onSave(v.trim())}>
+      {(dirty || saving) && (
+        <Button size="sm" loading={saving} onClick={() => onSave(v.trim())}>
           حفظ
         </Button>
       )}
@@ -273,7 +301,7 @@ function NameCell({ project, onSave }: { project: Project; onSave: (name: string
   );
 }
 
-function CenterCard({ code, name, onSave }: { code: CenterCode; name: string; onSave: (n: string) => void }) {
+function CenterCard({ code, name, onSave, saving }: { code: CenterCode; name: string; onSave: (n: string) => void; saving?: boolean }) {
   const [v, setV] = useState(name);
   const st = CENTER_STYLE[code];
   return (
@@ -287,7 +315,7 @@ function CenterCard({ code, name, onSave }: { code: CenterCode; name: string; on
           <Label htmlFor={`c-${code}`}>اسم المركز</Label>
           <div className="flex gap-2">
             <Input id={`c-${code}`} value={v} onChange={(e) => setV(e.target.value)} />
-            <Button variant="secondary" size="lg" disabled={!v.trim() || v.trim() === name} onClick={() => onSave(v)}>
+            <Button variant="secondary" size="lg" disabled={!v.trim() || v.trim() === name} loading={saving} onClick={() => onSave(v)}>
               حفظ
             </Button>
           </div>
@@ -307,14 +335,18 @@ function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [code, setCode] = useState("");
   const [centers, setCenters] = useState<CenterCode[]>(["GAZA", "KHY"]);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function submit() {
+    if (busy) return;
     const c = code.trim().toUpperCase();
     if (!name.trim()) return setErr("اكتب اسم المشروع");
     if (!/^[A-Z0-9_]{2,12}$/.test(c)) return setErr("الرمز من 2 إلى 12 حرفاً إنجليزياً كبيراً أو أرقام");
     if (db.projects.some((p) => p.code === c)) return setErr("هذا الرمز مستخدم لمشروع آخر");
     if (!centers.length) return setErr("اختر مركزاً واحداً على الأقل");
+    setBusy(true);
     const e = await saveProject({ code: c, name: name.trim(), active: true, order: db.projects.length + 1, centers });
+    setBusy(false);
     if (e) return setErr(e);
     toast(`تمت إضافة ${name.trim()}`);
     setName("");
@@ -333,7 +365,7 @@ function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
           <Button variant="secondary" size="lg" onClick={onClose}>
             إلغاء
           </Button>
-          <Button size="lg" onClick={submit}>
+          <Button size="lg" onClick={submit} loading={busy} loadingText="جارٍ الإضافة…">
             إضافة المشروع
           </Button>
         </>

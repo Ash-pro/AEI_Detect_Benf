@@ -15,6 +15,7 @@ import { homePath } from "@/lib/roles";
 import { centerName } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { CENTER_STYLE } from "@/components/shell/center-theme";
+import { PageLoader } from "@/components/ui/page-loader";
 
 /** الشاشة 2 — تسجيل الدخول */
 function LoginInner() {
@@ -61,7 +62,7 @@ function LoginInner() {
     router.replace(homePath(r.user!.role));
   }
 
-  if (!ready || !center) return <div className="min-h-dvh" />;
+  if (!ready || !center) return <PageLoader />;
   const st = CENTER_STYLE[center];
 
   return (
@@ -146,9 +147,9 @@ function LoginInner() {
             )}
           </div>
 
-          <Button type="submit" size="lg" block className="mt-6" disabled={busy}>
+          <Button type="submit" size="lg" block className="mt-6" loading={busy} loadingText="جارٍ الدخول…">
             <LogIn className="size-5" />
-            {busy ? "جارٍ الدخول…" : "دخول"}
+            دخول
           </Button>
           {!isStandalone() && (
             <button
@@ -198,7 +199,7 @@ function LoginInner() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh" />}>
+    <Suspense fallback={<PageLoader />}>
       <LoginInner />
     </Suspense>
   );

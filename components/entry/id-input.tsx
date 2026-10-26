@@ -3,12 +3,13 @@
 import { forwardRef } from "react";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 /** حقل رقم الهوية — يبحث تلقائياً عند اكتمال 9 أرقام */
 export const IdInput = forwardRef<
   HTMLInputElement,
-  { value: string; onChange: (v: string) => void; onEnter: () => void; onClear: () => void; error?: string }
->(function IdInput({ value, onChange, onEnter, onClear, error }, ref) {
+  { value: string; onChange: (v: string) => void; onEnter: () => void; onClear: () => void; error?: string; loading?: boolean }
+>(function IdInput({ value, onChange, onEnter, onClear, error, loading }, ref) {
   return (
     <div>
       <label htmlFor="nid" className="mb-2 block text-sm font-semibold text-muted">
@@ -20,8 +21,8 @@ export const IdInput = forwardRef<
           error ? "border-bad" : "border-line focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/15",
         )}
       >
-        <span className="ps-4 text-muted sm:ps-5">
-          <Search className="size-6" />
+        <span className={cn("ps-4 sm:ps-5", loading ? "text-brand" : "text-muted")}>
+          {loading ? <Spinner className="size-6" label="جارٍ البحث" /> : <Search className="size-6" />}
         </span>
         <input
           ref={ref}
@@ -34,6 +35,7 @@ export const IdInput = forwardRef<
           placeholder="_ _ _ _ _ _ _ _ _"
           value={value}
           aria-invalid={Boolean(error)}
+          aria-busy={loading || undefined}
           aria-describedby="nid-msg"
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
@@ -59,7 +61,7 @@ export const IdInput = forwardRef<
         </span>
       </div>
       <p id="nid-msg" className={cn("mt-2 min-h-[22px] text-sm font-semibold", error ? "text-bad" : "text-muted")}>
-        {error ?? "أدخل 9 أرقام — يظهر الملف تلقائياً"}
+        {error ?? (loading ? "جارٍ البحث عن الهوية…" : "أدخل 9 أرقام — يظهر الملف تلقائياً")}
       </p>
     </div>
   );

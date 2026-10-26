@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, CheckCircle2, ChevronLeft, Clock, ListOrdered, PenLine } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, ChevronLeft, Clock, ListOrdered, PenLine, RotateCcw } from "lucide-react";
+import { UndoEntryDialog, canUndo } from "./undo-dialog";
 import { IdTypeTag } from "./id-fields";
 import { Card } from "@/components/ui/card";
 import { projectName } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
 import { projectQueue, type QueueItem } from "@/lib/queue";
-import type { CenterCode, Db, SessionUser } from "@/lib/types";
+import type { CenterCode, Db, Entry, SessionUser } from "@/lib/types";
 import { cn, formatTime, minutesText } from "@/lib/utils";
 
 type Tab = "wait" | "served" | "all";
@@ -27,6 +28,7 @@ export function QueueList({
   const [tab, setTab] = useState<Tab>("wait");
   const [project, setProject] = useState<string>("ALL");
   const [now, setNow] = useState(() => Date.now());
+  const [undo, setUndo] = useState<Entry | null>(null);
 
   // تحديث مدة الانتظار كل 30 ثانية
   useEffect(() => {
@@ -112,7 +114,15 @@ export function QueueList({
       {list.length ? (
         <ul className="divide-y divide-line/60">
           {list.map((item) => (
-            <Row key={item.reception.id + item.project} item={item} db={db} now={now} showProject={mine.length > 1} onPick={onPick} />
+            <Row
+              key={item.reception.id + item.project}
+              item={item}
+              db={db}
+              now={now}
+              showProject={mine.length > 1}
+              onPick={onPick}
+              onUndo={item.status === "served" && canUndo(item.served, user.id) ? () => setUndo(item.served!) : undefined}
+            />
           ))}
         </ul>
       ) : (
@@ -122,20 +132,35 @@ export function QueueList({
           {tab === "wait" && <p className="text-sm">القائمة تتحدث تلقائياً عند تحويل الاستقبال لأي حالة جديدة.</p>}
         </div>
       )}
+      <UndoEntryDialog entry={undo} onClose={() => setUndo(null)} />
     </Card>
   );
 }
 
-function Row({ item, db, now, showProject, onPick }: { item: QueueItem; db: Db; now: number; showProject: boolean; onPick: (i: QueueItem) => void }) {
+function Row({
+  item,
+  db,
+  now,
+  showProject,
+  onPick,
+  onUndo,
+}: {
+  item: QueueItem;
+  db: Db;
+  now: number;
+  showProject: boolean;
+  onPick: (i: QueueItem) => void;
+  onUndo?: () => void;
+}) {
   const b = db.beneficiaries[item.reception.nid];
   const waited = Math.max(0, Math.round((now - new Date(item.reception.at).getTime()) / 60_000));
   const muted = item.status !== "wait";
 
   return (
-    <li>
+    <li className="flex items-center">
       <button
         onClick={() => onPick(item)}
-        className={cn("group flex w-full items-center gap-3 px-4 py-3 text-start transition hover:bg-sunken/60 sm:px-5", muted && "opacity-75")}
+        className={cn("group flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start transition hover:bg-sunken/60 sm:px-5", muted && "opacity-75", onUndo && "pe-2 sm:pe-2")}
       >
         <span
           className={cn(
@@ -197,9 +222,20 @@ function Row({ item, db, now, showProject, onPick }: { item: QueueItem; db: Db; 
               حُوّلت إلى {item.movedTo?.map((p) => projectName(db, p)).join("، ")}
             </span>
           )}
-          <ChevronLeft className="size-4 text-muted group-hover:text-brand" />
+          {!onUndo && <ChevronLeft className="size-4 text-muted group-hover:text-brand" />}
         </span>
       </button>
+      {onUndo && (
+        <button
+          onClick={onUndo}
+          className="focus-ring me-3 inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-bad/30 px-3 text-sm font-bold text-bad hover:bg-bad-soft sm:me-4"
+          aria-label="التراجع عن إدخال الحالة"
+          title="التراجع عن إدخال الحالة"
+        >
+          <RotateCcw className="size-4" />
+          <span className="hidden sm:inline">تراجع</span>
+        </button>
+      )}
     </li>
   );
 }

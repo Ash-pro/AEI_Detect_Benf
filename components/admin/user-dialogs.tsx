@@ -14,6 +14,7 @@ import { isStaff } from "@/lib/roles";
 import { allProjects, lastActivity } from "@/lib/queries";
 import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatDate, formatTime, sinceText, todayKey, uuid } from "@/lib/utils";
+import { useBusy } from "@/lib/use-busy";
 
 export const ROLE_META: Record<Role, { label: string; desc: string; icon: typeof Store; cls: string }> = {
   RECEPTION: { label: "استقبال", desc: "يدخل هوية الحالة ويحوّلها للمشاريع", icon: Store, cls: "bg-info-soft text-info" },
@@ -170,14 +171,15 @@ export function UserFormDialog({ open, user, onClose }: { open: boolean; user: U
           <Button variant="secondary" size="lg" onClick={onClose}>
             إلغاء
           </Button>
-          <Button size="lg" className="sm:min-w-[200px]" onClick={submit}>
+          <Button size="lg" className="sm:min-w-[200px]" onClick={submit} loading={busy} loadingText={isEdit ? "جارٍ الحفظ…" : "جارٍ الإنشاء…"}>
             {isEdit ? "حفظ التعديلات" : "إنشاء المستخدم"}
           </Button>
         </>
       }
     >
       <form
-        className="space-y-6"
+        aria-busy={busy || undefined}
+        className={cn("space-y-6 transition-opacity", busy && "pointer-events-none opacity-60")}
         onSubmit={(e) => {
           e.preventDefault();
           submit();
@@ -346,6 +348,7 @@ export function ResetPasswordDialog({ user, onClose }: { user: User | null; onCl
   const { saveUser } = useStore();
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
+  const { busy, run } = useBusy<"reset">();
   useEffect(() => {
     if (user) {
       setPass("");
@@ -369,12 +372,16 @@ export function ResetPasswordDialog({ user, onClose }: { user: User | null; onCl
             </Button>
             <Button
               size="lg"
-              onClick={async () => {
-                const p = generatePassword();
-                const e = await saveUser({ ...user!, password: p });
-                if (e) return setErr(e);
-                setPass(p);
-              }}
+              loading={busy === "reset"}
+              loadingText="جارٍ التوليد…"
+              onClick={() =>
+                run("reset", async () => {
+                  const p = generatePassword();
+                  const e = await saveUser({ ...user!, password: p });
+                  if (e) return setErr(e);
+                  setPass(p);
+                })
+              }
             >
               <KeyRound className="size-4" />
               توليد كلمة مرور جديدة
@@ -404,6 +411,7 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
   const { db, deleteUser, saveUser, user: me } = useStore();
   const toast = useToast();
   const [err, setErr] = useState("");
+  const { busy, run } = useBusy<"off" | "del">();
   if (!user) return null;
   const count = db.entries.filter((e) => e.userId === user.id).length;
   const isSelf = me?.id === user.id;
@@ -425,12 +433,17 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
             <Button
               variant="secondary"
               size="lg"
-              onClick={async () => {
-                const e = await saveUser({ ...user, active: false });
-                if (e) return setErr(e);
-                toast("تم إيقاف الحساب");
-                onClose();
-              }}
+              loading={busy === "off"}
+              loadingText="جارٍ الإيقاف…"
+              disabled={busy === "del"}
+              onClick={() =>
+                run("off", async () => {
+                  const e = await saveUser({ ...user, active: false });
+                  if (e) return setErr(e);
+                  toast("تم إيقاف الحساب");
+                  onClose();
+                })
+              }
             >
               إيقاف الحساب بدلاً من الحذف
             </Button>
@@ -439,12 +452,16 @@ export function DeleteUserDialog({ user, onClose }: { user: User | null; onClose
             <Button
               variant="danger"
               size="lg"
-              onClick={async () => {
-                const e = await deleteUser(user.id);
-                if (e) return setErr(e);
-                toast("تم حذف المستخدم", "info");
-                onClose();
-              }}
+              loading={busy === "del"}
+              loadingText="جارٍ الحذف…"
+              onClick={() =>
+                run("del", async () => {
+                  const e = await deleteUser(user.id);
+                  if (e) return setErr(e);
+                  toast("تم حذف المستخدم", "info");
+                  onClose();
+                })
+              }
             >
               حذف نهائي
             </Button>

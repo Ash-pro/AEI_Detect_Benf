@@ -65,3 +65,31 @@
 
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* شريط التقدّم العلوي: حركة غير محددة من اليمين لليسار (RTL) */
+@keyframes progress-slide {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-300%); }
+}
+.progress-indeterminate {
+  position: absolute;
+  right: 0;
+  animation: progress-slide 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  box-shadow: 0 0 8px var(--color-brand);
+}
+html.is-busy, html.is-busy * { cursor: progress; }
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate { animation-duration: 2.4s; }
+}
+
+/* هيكل التحميل: وميض ناعم */
+@keyframes skeleton-shine {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-sunken) 25%, color-mix(in srgb, var(--color-line) 70%, var(--color-sunken)) 50%, var(--color-sunken) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shine 1.3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
