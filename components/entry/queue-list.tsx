@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, CheckCircle2, ChevronLeft, Clock, ListOrdered, PenLine, RotateCcw } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CheckCircle2, ChevronLeft, Clock, ListOrdered, PenLine, RotateCcw, Stethoscope } from "lucide-react";
+import { appointmentOf } from "@/lib/appointments";
 import { UndoEntryDialog, canUndo } from "./undo-dialog";
 import { IdTypeTag } from "./id-fields";
 import { Card } from "@/components/ui/card";
-import { projectName } from "@/lib/queries";
+import { projectName, userName } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
 import { projectQueue, type QueueItem } from "@/lib/queue";
 import type { CenterCode, Db, Entry, SessionUser } from "@/lib/types";
-import { cn, formatTime, minutesText } from "@/lib/utils";
+import { cn, dayFull, formatTime, minutesText } from "@/lib/utils";
 
 type Tab = "wait" | "served" | "all";
 
@@ -155,6 +156,8 @@ function Row({
   const b = db.beneficiaries[item.reception.nid];
   const waited = Math.max(0, Math.round((now - new Date(item.reception.at).getTime()) / 60_000));
   const muted = item.status !== "wait";
+  const ref = item.reception.referrals?.[item.project];
+  const appt = item.served?.noDonor ? appointmentOf(db, item.served.id) : undefined;
 
   return (
     <li className="flex items-center">
@@ -180,10 +183,24 @@ function Row({
             <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
             <IdTypeTag type={b?.type} />
             {showProject && <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-bold">{projectName(db, item.project)}</span>}
-            {item.reception.corrected && !item.reception.corrected.from.length && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
-                <ArrowLeftRight className="size-3" />
-                تحويل من نقطة
+            {ref ? (
+              <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info" title={ref.note}>
+                <Stethoscope className="size-3" />
+                محوّلة من نقطة {ref.from ? projectName(db, ref.from) : userName(db, ref.by)}
+              </span>
+            ) : (
+              item.reception.corrected &&
+              !item.reception.corrected.from.length && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
+                  <ArrowLeftRight className="size-3" />
+                  تحويل من نقطة
+                </span>
+              )
+            )}
+            {item.served?.noDonor && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
+                <CalendarClock className="size-3" />
+                بدون بت{appt ? ` · موعد ${dayFull(appt.due)}` : ""}
               </span>
             )}
             {item.movedFrom && (
@@ -193,6 +210,7 @@ function Row({
               </span>
             )}
           </span>
+          {ref?.note && item.status === "wait" && <span className="mt-0.5 block text-xs font-semibold text-info">ملاحظة: {ref.note}</span>}
           <span className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
             <span className="num font-semibold tracking-wider text-ink/80">{item.reception.nid}</span>
             <span>

@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { KindTag } from "./history";
 import { IdFields } from "./id-fields";
 import { useStore } from "@/lib/store";
+import { projectName } from "@/lib/queries";
 import type { Beneficiary, Entry, IdType, Project } from "@/lib/types";
 import { formatTime, normalizeDigits } from "@/lib/utils";
 
@@ -99,13 +100,16 @@ export function BeneficiaryEditor({ beneficiary, open = true }: { beneficiary: B
 export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projects: Project[]; onMoved: (nid: string) => void }) {
   const { updateEntryProjects, deleteEntry, moveEntry, db } = useStore();
   const toast = useToast();
-  const [sel, setSel] = useState<string[]>(entry.projects);
+  // تحويلات الطبيب من النقاط تبقى كما هي (تُلغى من النقطة التي حوّلت)
+  const refs = entry.referrals ?? {};
+  const base = entry.projects.filter((p) => !refs[p]);
+  const [sel, setSel] = useState<string[]>(base);
   const [newId, setNewId] = useState("");
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const { busy, run, any } = useBusy<"save" | "del" | "move">();
-  const changed = sel.slice().sort().join() !== entry.projects.slice().sort().join();
-  const options = projects.filter((p) => p.active || entry.projects.includes(p.code));
+  const changed = sel.slice().sort().join() !== base.slice().sort().join();
+  const options = projects.filter((p) => (p.active || entry.projects.includes(p.code)) && !refs[p.code]);
 
   return (
     <div className="rounded-2xl border border-line p-4">
@@ -113,6 +117,14 @@ export function EntryEditor({ entry, projects, onMoved }: { entry: Entry; projec
         <KindTag kind={entry.kind} />
         <span className="num font-semibold">{formatTime(entry.at)}</span>
       </div>
+      {Object.keys(refs).length > 0 && (
+        <p className="mb-3 rounded-xl bg-info-soft px-3 py-2 text-xs font-semibold text-info">
+          تحويل طبيب من نقطة (لا يتغير من هنا):{" "}
+          {Object.keys(refs)
+            .map((p) => `${projectName(db, p)}${entry.queue?.[p] ? ` دور ${entry.queue[p]}` : ""}`)
+            .join("، ")}
+        </p>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         {options.map((p) => (
           <CheckBox

@@ -16,6 +16,12 @@ export interface Project {
   centers: CenterCode[];
   /** لون الدور المميز للمشروع */
   color?: string;
+  /** مشروع طبيب: أي نقطة تحوّل إليه، ولا يُحسب تكراراً */
+  isDoctor?: boolean;
+  /** المراكز التي يُسمح فيها بالخدمة بدون تطبيق الممول + موعد */
+  deferCenters?: CenterCode[];
+  /** مدة الموعد الافتراضية بالأيام */
+  deferDays?: number;
 }
 
 export interface User {
@@ -60,6 +66,35 @@ export interface Entry {
   queueOut?: Record<string, number>;
   /** إدخال النقطة: إدخال الاستقبال الذي خُدم دوره (قد تكون هوية الطفل مختلفة عن ولي الأمر) */
   queueRef?: string;
+  /** إدخال النقطة: خُدمت بدون تطبيق الممول (بت) وحُجز لها موعد */
+  noDonor?: { reason?: string };
+  /** إدخال الاستقبال: مشاريع الطبيب التي حوّلتها نقطة: مشروع ← من حوّل */
+  referrals?: Record<string, Referral>;
+}
+
+export interface Referral {
+  /** الموظف الذي حوّل */
+  by: string;
+  /** مشروع النقطة التي حوّلت */
+  from?: string;
+  note?: string;
+}
+
+/** موعد بعد خدمة بدون تطبيق الممول */
+export interface Appointment {
+  id: string;
+  nid: string;
+  center: CenterCode;
+  project: string;
+  /** يوم الموعد YYYY-MM-DD */
+  due: string;
+  attempt: number;
+  /** الخدمة التي حُجز فيها */
+  createdEntry: string;
+  /** الخدمة التي أغلقته (حضرت وخُدمت) */
+  doneEntry?: string;
+  createdBy?: string;
+  createdAt: string;
 }
 
 export interface ChangeLog {
@@ -89,6 +124,8 @@ export interface Db {
   counters: Record<string, number>;
   changes: ChangeLog[];
   settings: Settings;
+  /** مواعيد الخدمة بدون تطبيق الممول */
+  appointments: Appointment[];
 }
 
 export type SessionUser = Omit<User, "password">;

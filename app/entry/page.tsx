@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, RotateCcw, ChevronDown, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
+import { CalendarClock, CalendarDays, CheckCircle2, RotateCcw, ChevronDown, CircleAlert, Info, Keyboard, Link2, ListOrdered, Sparkles, Ticket, X } from "lucide-react";
 import { AppGate } from "@/components/shell/app-gate";
 import { StaffHeader } from "@/components/shell/app-header";
 import { IdInput } from "@/components/entry/id-input";
@@ -12,7 +12,11 @@ import { RoutingDialog, RoutingPanel } from "@/components/entry/routing";
 import { StatsStrip } from "@/components/entry/stats-strip";
 import { IdFields, IdTypeTag } from "@/components/entry/id-fields";
 import { QueueList } from "@/components/entry/queue-list";
+import { AppointmentsList } from "@/components/entry/appointments-list";
 import { UndoEntryDialog, canUndo } from "@/components/entry/undo-dialog";
+import { DoctorReferDialog, NoDonorDialog, PointExtras } from "@/components/entry/point-extras";
+import { apptStatus, apptWhen, appointmentOf, deferAllowed, openAppointments } from "@/lib/appointments";
+import { dayFull } from "@/lib/utils";
 import { DayLog } from "@/components/entry/day-log";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +56,8 @@ function EntryScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [routingOpen, setRoutingOpen] = useState(false);
+  const [noDonorOpen, setNoDonorOpen] = useState(false);
+  const [doctorOpen, setDoctorOpen] = useState(false);
   // الحالة الجديدة: الاسم ونوع الهوية
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
@@ -89,6 +95,11 @@ function EntryScreen() {
 
   const stats = staffStats(db, u, c);
   const waiting = useMemo(() => (isPoint ? waitingCount(db, c, u.projects) : 0), [db, c, isPoint, u.projects]);
+  // تبويب المواعيد: لموظف نقطة مشروع مفعّل له الخدمة بدون بت في هذا المركز
+  const apptCount = useMemo(() => {
+    if (!isPoint || !u.projects.some((p) => deferAllowed(db, p, c))) return undefined;
+    return db.appointments.filter((a) => a.center === c && u.projects.includes(a.project) && ["today", "missed"].includes(apptStatus(a))).length;
+  }, [db, c, isPoint, u.projects]);
 
   /** المشاريع المحددة مسبقاً */
   const preselect = useCallback(
@@ -108,7 +119,8 @@ function EntryScreen() {
       }
       const todayEntry = db.entries.find((e) => e.nid === id && e.date === today && e.kind === "RECEPTION" && e.center === c);
       const src = todayEntry ?? lastReception(db, id, c);
-      return src ? src.projects.filter((p) => available.includes(p)) : [];
+      // زيارة سابقة: تحويلات الطبيب من النقاط لا تتكرر تلقائياً
+      return src ? src.projects.filter((p) => available.includes(p) && (src === todayEntry || !src.referrals?.[p])) : [];
     },
     [db, projects, isPoint, today, u.id, u.projects, c],
   );
@@ -242,9 +254,39 @@ function EntryScreen() {
       </StatusLine>
     );
   }
+  // الاستقبال: مواعيد الخدمة بدون تطبيق الممول في هذا المركز
+  const receptionAppts = nid && !isPoint ? openAppointments(db, nid, c) : [];
+  if (receptionAppts.length) {
+    status = (
+      <>
+        {status}
+        {receptionAppts.map((a) => {
+          const s = apptStatus(a);
+          return (
+            <StatusLine key={a.id} tone={s === "today" ? "ok" : s === "missed" ? "bad" : "warn"} icon={<CalendarDays className="size-5" />}>
+              {apptWhen(a)} في {projectName(db, a.project)} (<span className="num">{dayFull(a.due)}</span>) — خُدمت سابقاً بدون تطبيق بت
+              {s === "upcoming" ? ". يمكن تحويلها، والقرار للمشروع" : ""}
+            </StatusLine>
+          );
+        })}
+      </>
+    );
+  }
   const myPointToday = todayMine.filter((e) => e.kind === "POINT");
 
   const allDone = isPoint && u.projects.length > 0 && u.projects.every((p) => pointDoneToday.has(p));
+  // مشاريعي التي تسمح بالخدمة بدون تطبيق الممول هنا ولم تُخدم فيها الحالة اليوم
+  const deferProjects = isPoint ? projects.map((p) => p.code).filter((p) => deferAllowed(db, p, c) && !pointDoneToday.has(p)) : [];
+  // مشروع النقطة الذي يحوّل للطبيب
+  const referFrom = queueRef?.project ?? selected.find((p) => u.projects.includes(p)) ?? u.projects[0];
+  /** الحالة الجديدة تحتاج الاسم والنوع قبل أي إجراء */
+  const needIdentity = () => {
+    if (!isNew || (name.trim() && idType)) return false;
+    setShowErr(true);
+    setFormError(!name.trim() ? "اكتب اسم المستفيد — الاسم الأول يكفي" : "اختر نوع الهوية: أب أو أم أو طفل");
+    if (!name.trim()) nameRef.current?.focus();
+    return true;
+  };
 
   const cardEl =
     beneficiary && !checking ? (
@@ -262,7 +304,7 @@ function EntryScreen() {
         }}
       />
       <div className="sticky top-[70px] z-30 -mx-4 bg-bg/90 px-4 pb-2 pt-1 backdrop-blur">
-        <ViewTabs view={view} onChange={setView} waiting={waiting} isPoint={isPoint} />
+        <ViewTabs view={view} onChange={setView} waiting={waiting} isPoint={isPoint} appts={apptCount} />
       </div>
 
       {isPoint && view !== "log" && canUndo(lastServed, u.id) && (
@@ -294,6 +336,20 @@ function EntryScreen() {
         />
       ) : isPoint && view === "queue" ? (
         <QueueList db={db} user={u} center={c} onPick={pick} />
+      ) : view === "appts" && apptCount !== undefined ? (
+        <AppointmentsList
+          db={db}
+          user={u}
+          center={c}
+          onOpen={(id) => {
+            setQueueRef(null);
+            setView("entry");
+            setRaw(id);
+            setError(undefined);
+            open(id, null);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
       ) : (
       <>
       {/* أثناء العمل على هوية: إخفاء التلميح والإحصائيات للتركيز على الحالة */}
@@ -361,12 +417,20 @@ function EntryScreen() {
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {projects.map((p) => {
                 const doneAt = isPoint ? pointDoneToday.get(p.code) : undefined;
+                // الاستقبال: تحويل طبيب أضافته نقطة اليوم — ثابت ولا يُلغى من هنا
+                const ref = !isPoint ? todayHere?.referrals?.[p.code] : undefined;
                 return (
                   <CheckBox
                     key={p.code}
-                    checked={selected.includes(p.code)}
-                    disabled={Boolean(doneAt)}
-                    sub={doneAt ? `أُدخلت اليوم ${formatTime(doneAt)}` : undefined}
+                    checked={selected.includes(p.code) || Boolean(ref)}
+                    disabled={Boolean(doneAt) || Boolean(ref)}
+                    sub={
+                      doneAt
+                        ? `أُدخلت اليوم ${formatTime(doneAt)}`
+                        : ref
+                          ? `حوّلتها نقطة ${ref.from ? projectName(db, ref.from) : ""} · دور ${todayHere?.queue?.[p.code] ?? ""}`
+                          : undefined
+                    }
                     onChange={(v) => {
                       setFormError("");
                       setSelected((s) => (v ? [...s, p.code] : s.filter((x) => x !== p.code)));
@@ -394,6 +458,11 @@ function EntryScreen() {
                   <CheckCircle2 className="size-5 shrink-0 text-ok" />
                   <span className="min-w-0 flex-1">
                     أدخلتها في <b>{e.projects.map((x) => projectName(db, x)).join("، ")}</b> الساعة <span className="num">{formatTime(e.at)}</span>
+                    {e.noDonor && (
+                      <span className="ms-1.5 rounded bg-warn-soft px-1.5 text-xs font-bold text-warn">
+                        بدون بت{appointmentOf(db, e.id) ? ` · موعد ${dayFull(appointmentOf(db, e.id)!.due)}` : ""}
+                      </span>
+                    )}
                   </span>
                   <Button size="sm" variant="secondary" className="border-bad/30 text-bad hover:bg-bad-soft" onClick={() => setUndo(e)}>
                     <RotateCcw className="size-4" />
@@ -401,6 +470,19 @@ function EntryScreen() {
                   </Button>
                 </div>
               ))}
+
+          {isPoint && (
+            <PointExtras
+              db={db}
+              user={u}
+              center={c}
+              nid={nid}
+              reception={todayHere}
+              canDefer={deferProjects.length > 0}
+              onNoDonor={() => !needIdentity() && setNoDonorOpen(true)}
+              onDoctor={() => !needIdentity() && setDoctorOpen(true)}
+            />
+          )}
 
           <FieldError>{formError}</FieldError>
 
@@ -465,6 +547,42 @@ function EntryScreen() {
         />
       )}
 
+      {isPoint && nid && (
+        <>
+          <NoDonorDialog
+            open={noDonorOpen}
+            onClose={() => setNoDonorOpen(false)}
+            nid={nid}
+            name={name}
+            type={idType}
+            projects={deferProjects}
+            defaultProject={queueRef?.project ?? selected.find((p) => deferProjects.includes(p))}
+            queueRef={queueRef}
+            onDone={(r) => {
+              setNoDonorOpen(false);
+              setLastServedId(r.entryId);
+              toast(`تم — خُدمت ${projectName(db, r.project)} بدون بت · موعدها ${dayFull(r.due)}${r.attempt > 1 ? ` (المحاولة ${r.attempt})` : ""}`);
+              const back = Boolean(queueRef);
+              reset();
+              if (back) setView("queue");
+            }}
+          />
+          <DoctorReferDialog
+            open={doctorOpen}
+            onClose={() => setDoctorOpen(false)}
+            nid={nid}
+            name={name}
+            type={idType}
+            from={referFrom}
+            reception={todayHere}
+            onDone={(r) => {
+              setDoctorOpen(false);
+              toast(`تم التحويل لـ ${projectName(db, r.project)} — دور ${r.queueNo}. وجّه المستفيد للطبيب`);
+            }}
+          />
+        </>
+      )}
+
       <ShareDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
@@ -475,20 +593,37 @@ function EntryScreen() {
   );
 }
 
-type View = "entry" | "queue" | "log";
+type View = "entry" | "queue" | "appts" | "log";
 
 /** تبويبات الموظف: إدخال هوية / قائمة الانتظار (النقطة) / سجل الإدخالات */
-function ViewTabs({ view, onChange, waiting, isPoint }: { view: View; onChange: (v: View) => void; waiting: number; isPoint: boolean }) {
-  const tabs = [
-    { value: "entry" as const, label: "إدخال هوية", short: "إدخال", icon: Keyboard },
+function ViewTabs({
+  view,
+  onChange,
+  waiting,
+  isPoint,
+  appts,
+}: {
+  view: View;
+  onChange: (v: View) => void;
+  waiting: number;
+  isPoint: boolean;
+  /** عدد مواعيد اليوم والفائتة — يظهر التبويب فقط لمشاريع الخدمة بدون بت */
+  appts?: number;
+}) {
+  const tabs: { value: View; label: string; short: string; icon: typeof Keyboard }[] = [
+    { value: "entry", label: "إدخال هوية", short: "إدخال", icon: Keyboard },
     ...(isPoint ? [{ value: "queue" as const, label: "قائمة الانتظار", short: "الانتظار", icon: ListOrdered }] : []),
-    { value: "log" as const, label: "سجل الإدخالات", short: "السجل", icon: CalendarDays },
+    ...(appts !== undefined ? [{ value: "appts" as const, label: "المواعيد", short: "المواعيد", icon: CalendarClock }] : []),
+    { value: "log", label: "سجل الإدخالات", short: "السجل", icon: CalendarDays },
   ];
   return (
     <div
       role="tablist"
       aria-label="طريقة العمل"
-      className={cn("mx-auto grid max-w-3xl gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card", isPoint ? "grid-cols-3" : "grid-cols-2")}
+      className={cn(
+        "mx-auto grid max-w-3xl gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card",
+        tabs.length === 4 ? "grid-cols-4" : tabs.length === 3 ? "grid-cols-3" : "grid-cols-2",
+      )}
     >
       {tabs.map((t) => (
         <button
@@ -501,7 +636,7 @@ function ViewTabs({ view, onChange, waiting, isPoint }: { view: View; onChange: 
             view === t.value ? "bg-brand text-brand-ink shadow-card" : "text-muted hover:bg-sunken hover:text-ink",
           )}
         >
-          <t.icon className="size-5 shrink-0" />
+          <t.icon className={cn("size-5 shrink-0", tabs.length === 4 && "hidden sm:block")} />
           <span className={isPoint ? "hidden sm:inline" : ""}>{t.label}</span>
           {isPoint && <span className="sm:hidden">{t.short}</span>}
           {t.value === "queue" && (
@@ -513,6 +648,9 @@ function ViewTabs({ view, onChange, waiting, isPoint }: { view: View; onChange: 
             >
               {waiting}
             </span>
+          )}
+          {t.value === "appts" && Boolean(appts) && (
+            <span className={cn("num min-w-6 rounded-full px-1.5 text-xs leading-5", view === "appts" ? "bg-surface/25" : "bg-warn text-white")}>{appts}</span>
           )}
         </button>
       ))}
@@ -613,7 +751,7 @@ function Hint({ text, storageKey }: { text: string; storageKey: string }) {
   );
 }
 
-function StatusLine({ tone, icon, children }: { tone: "ok" | "info" | "muted"; icon: React.ReactNode; children: React.ReactNode }) {
+function StatusLine({ tone, icon, children }: { tone: "ok" | "info" | "muted" | "warn" | "bad"; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div
       className={cn(
@@ -621,6 +759,8 @@ function StatusLine({ tone, icon, children }: { tone: "ok" | "info" | "muted"; i
         tone === "ok" && "bg-ok-soft text-ok",
         tone === "info" && "bg-info-soft text-info",
         tone === "muted" && "bg-sunken text-muted",
+        tone === "warn" && "bg-warn-soft text-warn",
+        tone === "bad" && "bg-bad-soft text-bad",
       )}
     >
       <span className="mt-0.5 shrink-0">{icon}</span>
@@ -661,11 +801,25 @@ function LookupSkeleton() {
 function LastServedBanner({ db, entry, onUndo, onClose }: { db: Db; entry: Entry; onUndo: () => void; onClose: () => void }) {
   const b = db.beneficiaries[entry.nid];
   const q = pointQueue(db, entry);
+  const appt = entry.noDonor ? appointmentOf(db, entry.id) : undefined;
   return (
-    <div role="status" className="flex animate-fade-up items-center gap-3 rounded-2xl border border-ok/30 bg-ok-soft px-4 py-3">
-      <CheckCircle2 className="size-6 shrink-0 text-ok" />
+    <div
+      role="status"
+      className={cn(
+        "flex animate-fade-up items-center gap-3 rounded-2xl border px-4 py-3",
+        entry.noDonor ? "border-warn/30 bg-warn-soft" : "border-ok/30 bg-ok-soft",
+      )}
+    >
+      {entry.noDonor ? <CalendarDays className="size-6 shrink-0 text-warn" /> : <CheckCircle2 className="size-6 shrink-0 text-ok" />}
       <span className="min-w-0 flex-1 text-sm">
-        <span className="block font-bold text-ok">تم إدخال الحالة</span>
+        <span className={cn("block font-bold", entry.noDonor ? "text-warn" : "text-ok")}>
+          {entry.noDonor ? "تم — خدمة بدون بت" : "تم إدخال الحالة"}
+          {appt && (
+            <span className="num ms-1.5 font-semibold">
+              · موعدها {dayFull(appt.due)}
+            </span>
+          )}
+        </span>
         <span className="block truncate text-ink/80">
           {b?.name || entry.nid} · {entry.projects.map((p) => projectName(db, p)).join("، ")}
           {q.number ? <span className="num"> · دور {q.number}</span> : null}

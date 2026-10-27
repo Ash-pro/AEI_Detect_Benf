@@ -17,7 +17,7 @@ import {
   Share2,
   X,
 } from "lucide-react";
-import { ProjectChip } from "./history";
+import { EntryBadges, ProjectChip } from "./history";
 import { IdTypeTag } from "./id-fields";
 import { EntryEditor } from "./edit-dialog";
 import { Card } from "@/components/ui/card";
@@ -566,6 +566,7 @@ function Row({
             <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
             <IdTypeTag type={b?.type} />
             {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+            <EntryBadges e={e} db={db} />
             {isReferral && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">تحويل منك</span>}
           </span>
           {/* الجوال: الهوية والوقت تحت الاسم */}

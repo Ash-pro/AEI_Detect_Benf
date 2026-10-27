@@ -1,5 +1,6 @@
 "use client";
 
+import { ProjectOptionsButton, ProjectOptionsDialog } from "@/components/admin/project-options";
 import { useBusy } from "@/lib/use-busy";
 import { Spinner } from "@/components/ui/spinner";
 import { useMemo, useState } from "react";
@@ -70,6 +71,7 @@ export default function ProjectsPage() {
   const { db, saveProject, moveProject, renameCenter } = useStore();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
+  const [options, setOptions] = useState<Project | null>(null);
   const list = allProjects(db);
   const month = todayKey().slice(0, 7);
   const monthCounts = useMemo(() => {
@@ -117,6 +119,9 @@ export default function ProjectsPage() {
               <div className="min-w-0 flex-1">
                 <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
                 <code className="mt-0.5 block px-2 text-start text-[11px] text-muted">{p.code}</code>
+                <div className="mt-1.5 px-1">
+                  <ProjectOptionsButton project={p} onOpen={() => setOptions(p)} />
+                </div>
               </div>
               <Switch
                 checked={p.active}
@@ -213,7 +218,10 @@ export default function ProjectsPage() {
                       <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`, `${p.code}:color`)} />
                       <div className="min-w-0 flex-1">
                         <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
-                        <code className="mt-0.5 block text-start text-[11px] text-muted">{p.code}</code>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-2">
+                          <code className="text-start text-[11px] text-muted">{p.code}</code>
+                          <ProjectOptionsButton project={p} onOpen={() => setOptions(p)} />
+                        </span>
                       </div>
                     </div>
                   </td>
@@ -276,6 +284,7 @@ export default function ProjectsPage() {
       </div>
 
       <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
+      <ProjectOptionsDialog project={options ? db.projects.find((x) => x.code === options.code) ?? null : null} onClose={() => setOptions(null)} />
     </>
   );
 }

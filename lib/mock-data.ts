@@ -1,4 +1,4 @@
-import type { Beneficiary, Center, CenterCode, Db, Entry, IdType, Project, Settings, User } from "./types";
+import type { Appointment, Beneficiary, Center, CenterCode, Db, Entry, IdType, Project, Settings, User } from "./types";
 import { assignQueue } from "./queue";
 import { DEFAULT_SUPERVISOR_PERMS } from "./permissions";
 import { withColors } from "./project-colors";
@@ -6,7 +6,7 @@ import { addDays, isValidNationalId, todayKey } from "./utils";
 
 /* بيانات تجريبية للعرض والاختبار فقط — تُستبدل بـ Supabase لاحقاً */
 
-export const DB_VERSION = 6;
+export const DB_VERSION = 7;
 
 export const CENTERS: Center[] = [
   { code: "GAZA", name: "مركز غزة", short: "غزة" },
@@ -16,7 +16,7 @@ export const CENTERS: Center[] = [
 const BOTH: CenterCode[] = ["GAZA", "KHY"];
 
 export const SEED_PROJECTS: Project[] = [
-  { code: "WFP", name: "WFP", active: true, order: 1, centers: BOTH },
+  { code: "WFP", name: "BSFP-WFP", active: true, order: 1, centers: BOTH, deferCenters: ["KHY"], deferDays: 14 },
   { code: "MAP", name: "MAP", active: true, order: 2, centers: BOTH },
   { code: "WHH", name: "WHH", active: true, order: 3, centers: BOTH },
   { code: "UNICEF", name: "UNICEF", active: true, order: 4, centers: BOTH },
@@ -24,6 +24,8 @@ export const SEED_PROJECTS: Project[] = [
   { code: "CELIAC", name: "السيلياك", active: true, order: 6, centers: BOTH },
   { code: "MECA", name: "MECA", active: true, order: 7, centers: BOTH },
   { code: "TAAWON", name: "التعاون", active: true, order: 8, centers: BOTH },
+  { code: "WFPTSFP", name: "TSFP-WFP", active: true, order: 9, centers: BOTH, deferCenters: ["KHY"], deferDays: 14 },
+  { code: "DRUNICEF", name: "Dr UNICEF", active: true, order: 10, centers: BOTH, isDoctor: true },
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -36,8 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
 export const DEMO_PASSWORD = "1234";
 
 const POINT_NAMES: Record<CenterCode, string[]> = {
-  GAZA: ["أحمد الحلو", "منى السقا", "خالد عياد", "ريم الشوا", "سامي حمدان", "إيمان الغول", "يوسف بكر", "نسرين عاشور"],
-  KHY: ["محمود قديح", "رهف أبو طير", "عبير الفرا", "بلال الأغا", "هدى معمر", "طارق شعت", "دعاء النجار", "وسيم بربخ"],
+  GAZA: ["أحمد الحلو", "منى السقا", "خالد عياد", "ريم الشوا", "سامي حمدان", "إيمان الغول", "يوسف بكر", "نسرين عاشور", "لينا شاهين", "د. سامر عودة"],
+  KHY: ["محمود قديح", "رهف أبو طير", "عبير الفرا", "بلال الأغا", "هدى معمر", "طارق شعت", "دعاء النجار", "وسيم بربخ", "سجى الأسطل", "د. منار قديح"],
 };
 
 function seedUsers(): User[] {
@@ -151,7 +153,7 @@ export function atTime(key: string, minutes: number): string {
   return new Date(`${key}T${hh}:${mm}:00${gazaOffset(key)}`).toISOString();
 }
 
-const WEIGHTS: Record<string, number> = { WFP: 0.55, UNICEF: 0.45, MAP: 0.2, STC: 0.12, TAAWON: 0.09, CELIAC: 0.07, WHH: 0.06, MECA: 0.05 };
+const WEIGHTS: Record<string, number> = { WFP: 0.55, UNICEF: 0.45, MAP: 0.2, STC: 0.12, TAAWON: 0.09, CELIAC: 0.07, WHH: 0.06, MECA: 0.05, WFPTSFP: 0.18, DRUNICEF: 0.06 };
 
 export function seedDb(): Db {
   const r = rng(20261021);
@@ -286,6 +288,37 @@ export function seedDb(): Db {
     wrong.corrected = { by: "u-khy-multi", at: new Date(Math.min(Date.now(), new Date(wrong.at).getTime() + 12 * 60_000)).toISOString(), from: ["WFP"] };
   }
 
+  // مواعيد تجريبية: خدمات WFP في خانيونس بدون تطبيق الممول قبل أسبوعين — موعدها اليوم، وواحدة فاتها الموعد
+  const appointments: Appointment[] = [];
+  const pick = (ago: number, count: number, dueAgo: number) => {
+    const date = addDays(today, -ago);
+    entries
+      .filter((e) => e.kind === "POINT" && e.center === "KHY" && e.date === date && e.projects[0] === "WFP")
+      .slice(0, count)
+      .forEach((e, i) => {
+        e.noDonor = { reason: "مستلمة هذا الشهر من شريك آخر" };
+        appointments.push({
+          id: `a-${ago}-${i}`,
+          nid: e.nid,
+          center: "KHY",
+          project: "WFP",
+          due: addDays(today, -dueAgo),
+          attempt: 1,
+          createdEntry: e.id,
+          createdBy: e.userId,
+          createdAt: e.at,
+        });
+      });
+  };
+  pick(14, 4, 0);
+  pick(13, 3, -1);
+  pick(20, 2, 6);
+  // موعد أُغلق: الحالة رجعت وخُدمت
+  for (const a of appointments) {
+    const done = entries.find((e) => e.kind === "POINT" && e.nid === a.nid && e.projects[0] === "WFP" && e.date >= a.due && e.id !== a.createdEntry);
+    if (done) a.doneEntry = done.id;
+  }
+
   return {
     version: DB_VERSION,
     seededOn: today,
@@ -297,6 +330,7 @@ export function seedDb(): Db {
     counters,
     changes: [],
     settings: DEFAULT_SETTINGS,
+    appointments,
   };
 }
 

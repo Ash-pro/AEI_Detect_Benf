@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Hourglass, Pencil, Search, Stethoscope, Store, UserPlus, X } from "lucide-react";
 import { CenterTabs, DateStepper, ExportButton, FilterBar, PageHead, Segmented, StatCard, coverage } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
-import { KindTag, ProjectChip } from "@/components/entry/history";
+import { EntryBadges, KindTag, ProjectChip } from "@/components/entry/history";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import { IdTypeTag } from "@/components/entry/id-fields";
 import { Card } from "@/components/ui/card";
@@ -171,6 +171,7 @@ function DayInner() {
                   {e.projects.map((p) => (
                     <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
                   ))}
+                  <EntryBadges e={e} db={db} />
                 </span>
               </span>
               {canEdit && (
@@ -215,6 +216,7 @@ function DayInner() {
                       {e.projects.map((p) => (
                         <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
                       ))}
+                      <EntryBadges e={e} db={db} />
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-muted">

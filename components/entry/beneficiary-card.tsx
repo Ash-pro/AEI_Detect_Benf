@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CalendarClock, ChevronDown, History, Pencil, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { HistoryRow, KindTag, ProjectChip } from "./history";
+import { EntryBadges, HistoryRow, KindTag, ProjectChip } from "./history";
 import { IdTypeTag } from "./id-fields";
 import type { Beneficiary, Db, Entry } from "@/lib/types";
 import { centerName, correctionText, userName } from "@/lib/queries";
@@ -83,6 +83,7 @@ export function BeneficiaryCard({
             {last.projects.map((p) => (
               <ProjectChip key={p} db={db} code={p} number={last.queue?.[p]} tone="surface" />
             ))}
+            <EntryBadges e={last} db={db} />
             <span className="text-muted">
               · {centerName(db, last.center)} · {userName(db, last.userId)}
             </span>

@@ -4,13 +4,13 @@ import { tracked } from "./pending";
 /* وضع العرض التجريبي (NEXT_PUBLIC_DEMO=1): بيانات محلية في المتصفح بدون Supabase — للمراجعة والتجربة فقط */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Beneficiary, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
+import type { Appointment, Beneficiary, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
 import { DB_VERSION, seedDb } from "./mock-data";
 import { assignQueue } from "./queue";
 import { nextColor, withColors } from "./project-colors";
-import { storageGet, storageSet, todayKey, uuid } from "./utils";
+import { addDays, storageGet, storageSet, todayKey, uuid } from "./utils";
 import { isStaff } from "./roles";
-import { StoreContext, type AddEntryInput, type AddEntryResult, type Ctx, type ReferInput } from "./store";
+import { StoreContext, type AddEntryInput, type AddEntryResult, type Ctx, type DoctorReferInput, type NoDonorInput, type ReferInput } from "./store";
 
 const DB_KEY = "aei.demo.db";
 const CENTER_KEY = "aei.v2.center";
@@ -27,6 +27,7 @@ const EMPTY: Db = {
   counters: {},
   changes: [],
   settings: { hintReception: "", hintPoint: "", idleMinutes: 30 },
+  appointments: [],
 };
 
 const strip = (u: User): SessionUser => {
@@ -34,8 +35,23 @@ const strip = (u: User): SessionUser => {
   return rest;
 };
 
-const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings"];
+const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings", "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "saveProjectOptions"];
 const LATENCY = 450;
+
+/** مثل قاعدة البيانات: تعديل توجيه الاستقبال لا يحذف تحويلات الطبيب التي أضافتها النقاط */
+function keepReferrals(e: Entry, projects: string[]): string[] {
+  const kept = e.projects.filter((p) => e.referrals?.[p] && !projects.includes(p));
+  return [...projects, ...kept];
+}
+
+/** مثل trigger قاعدة البيانات: أي خدمة نقطة تغلق الموعد القادم لنفس الهوية والمشروع والمركز */
+function closeAppointments(list: Appointment[], created: Entry[]): Appointment[] {
+  return list.map((a) => {
+    if (a.doneEntry) return a;
+    const hit = created.find((e) => e.nid === a.nid && e.center === a.center && e.projects.includes(a.project) && e.id !== a.createdEntry);
+    return hit ? { ...a, doneEntry: hit.id } : a;
+  });
+}
 function withLatency(ctx: Ctx, keys: (keyof Ctx)[]): Ctx {
   const out = { ...ctx };
   keys.forEach((k) => {
@@ -163,8 +179,10 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
           (e) => e.kind === "RECEPTION" && e.nid === input.nid && e.date === today && e.center === center,
         );
         if (existing) {
-          const q = assignQueue(db.counters, existing, input.projects);
-          const updated = { ...existing, projects: input.projects, queue: q.queue };
+          // تحويلات الطبيب من النقاط تبقى كما هي
+          const projects = keepReferrals(existing, input.projects);
+          const q = assignQueue(db.counters, existing, projects);
+          const updated = { ...existing, projects, queue: q.queue };
           setDb((d) =>
             log(
               { ...d, counters: { ...d.counters, ...q.counters }, entries: d.entries.map((e) => (e.id === existing.id ? updated : e)) },
@@ -206,6 +224,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
         counters: { ...d.counters, ...counters },
         beneficiaries: isNew ? { ...d.beneficiaries, [input.nid]: beneficiary } : d.beneficiaries,
         entries: [...d.entries, ...created],
+        appointments: kind === "POINT" ? closeAppointments(d.appointments, created) : d.appointments,
       }));
       return { ok: true, mode: "created", entry: created[0], isNew, skipped, added: kind === "RECEPTION" ? projects : [] };
     },
@@ -240,6 +259,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
         const clash = db.entries.some((x) => x.id !== e.id && x.kind === "POINT" && x.nid === e.nid && x.date === e.date && x.projects.some((p) => projects.includes(p)));
         if (clash) return "هذا المشروع مُدخل لنفس الحالة في نفس اليوم";
       }
+      if (e.kind === "RECEPTION") projects = keepReferrals(e, projects);
       const q = e.kind === "RECEPTION" ? assignQueue(db.counters, e, projects) : null;
       setDb((d) =>
         log(
@@ -265,7 +285,11 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
         const entries = d.entries.filter((x) => x.id !== entryId);
         const beneficiaries = { ...d.beneficiaries };
         if (!entries.some((x) => x.nid === e.nid)) delete beneficiaries[e.nid];
-        return log({ ...d, entries, beneficiaries }, "حذف إدخال", `${e.nid} (${e.date}) ${e.projects.join("، ")}`);
+        // مثل قاعدة البيانات: موعد الخدمة المحذوفة يُحذف، والموعد الذي أغلقته يعود قادماً
+        const appointments = d.appointments
+          .filter((a) => a.createdEntry !== entryId && beneficiaries[a.nid])
+          .map((a) => (a.doneEntry === entryId ? { ...a, doneEntry: undefined } : a));
+        return log({ ...d, entries, beneficiaries, appointments }, "حذف إدخال", `${e.nid} (${e.date}) ${e.projects.join("، ")}`);
       });
     },
     [log],
@@ -277,7 +301,8 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       if (!projects.length) return "اختر المشروع الصحيح";
       const e = db.entries.find((x) => x.id === receptionEntryId && x.kind === "RECEPTION");
       if (!e) return "لا يوجد توجيه استقبال لهذه الحالة اليوم";
-      const from = e.corrected?.from ?? e.projects;
+      const from = e.corrected?.from ?? e.projects.filter((p) => !e.referrals?.[p]);
+      projects = keepReferrals(e, projects);
       // المشروع الجديد يعطي الرقم التالي، ورقم المشروع القديم يُلغى ولا يُعاد استخدامه
       const q = assignQueue(db.counters, e, projects);
       const queueOut = { ...e.queueOut };
@@ -361,6 +386,120 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     [db, log],
   );
 
+  /** النقطة: تحويل لمشروع طبيب (إضافي) */
+  const referToDoctor = useCallback(
+    (input: DoctorReferInput): { error?: string; queueNo?: number; entryId?: string } => {
+      if (!user || !center) return { error: "انتهت الجلسة" };
+      if (user.role !== "POINT") return { error: "التحويل للطبيب من نقاط المشاريع" };
+      const proj = db.projects.find((p) => p.code === input.project);
+      if (!proj?.isDoctor) return { error: "هذا المشروع ليس مشروع طبيب" };
+      if (!proj.active || !proj.centers.includes(center)) return { error: "مشروع غير متاح في هذا المركز" };
+      const today = todayKey();
+      const now = new Date().toISOString();
+      const isNew = !db.beneficiaries[input.nid];
+      if (isNew && (!input.name?.trim() || !input.type)) return { error: "اكتب اسم المستفيد واختر نوع الهوية أولاً" };
+      const rec = db.entries.find((e) => e.kind === "RECEPTION" && e.nid === input.nid && e.date === today && e.center === center);
+      if (rec?.queue?.[input.project]) return { error: `الحالة محوّلة لهذا الطبيب اليوم (دور ${rec.queue[input.project]})` };
+      const base: Entry = rec ?? { id: uuid(), nid: input.nid, center, userId: user.id, kind: "RECEPTION", at: now, date: today, projects: [], isNew, corrected: { by: user.id, at: now, from: [] } };
+      const q = assignQueue(db.counters, base, [...base.projects, input.project]);
+      const from = input.from && user.projects.includes(input.from) ? input.from : undefined;
+      const queueOut = { ...base.queueOut };
+      delete queueOut[input.project];
+      const next: Entry = {
+        ...base,
+        projects: [...base.projects, input.project],
+        queue: q.queue,
+        ...(Object.keys(queueOut).length ? { queueOut } : { queueOut: undefined }),
+        referrals: { ...base.referrals, [input.project]: { by: user.id, from, note: input.note?.trim() || undefined } },
+      };
+      setDb((d) =>
+        log(
+          {
+            ...d,
+            counters: { ...d.counters, ...q.counters },
+            beneficiaries: isNew ? { ...d.beneficiaries, [input.nid]: { nid: input.nid, name: input.name!.trim(), type: input.type, createdAt: now } } : d.beneficiaries,
+            entries: rec ? d.entries.map((e) => (e.id === rec.id ? next : e)) : [...d.entries, next],
+          },
+          "تحويل لطبيب",
+          `${input.nid} ← ${input.project}${from ? ` (من ${from})` : ""} دور ${q.queue[input.project]}`,
+        ),
+      );
+      return { queueNo: q.queue[input.project], entryId: next.id };
+    },
+    [db, user, center, log],
+  );
+
+  const cancelDoctorReferral = useCallback(
+    (entryId: string, project: string): string | null => {
+      const e = db.entries.find((x) => x.id === entryId);
+      const ref = e?.referrals?.[project];
+      if (!e || !ref) return "لا يوجد تحويل للطبيب لإلغائه";
+      if (!(ref.by === user?.id && e.date === todayKey()) && !(user?.role === "ADMIN" || user?.permissions?.includes("edit_entries")))
+        return "يمكن إلغاء التحويل من نفس الموظف وفي نفس اليوم";
+      if (db.entries.some((x) => x.kind === "POINT" && x.nid === e.nid && x.date === e.date && x.center === e.center && x.projects.includes(project)))
+        return "الطبيب أدخل خدمة هذه الحالة. لا يمكن إلغاء التحويل";
+      setDb((d) => {
+        const projects = e.projects.filter((p) => p !== project);
+        const queue = { ...e.queue };
+        delete queue[project];
+        const referrals = { ...e.referrals };
+        delete referrals[project];
+        const removeEntry = !projects.length && !Object.keys(e.queueOut ?? {}).length;
+        const entries = removeEntry
+          ? d.entries.filter((x) => x.id !== e.id)
+          : d.entries.map((x) => (x.id === e.id ? { ...x, projects, queue, referrals: Object.keys(referrals).length ? referrals : undefined } : x));
+        const beneficiaries = { ...d.beneficiaries };
+        if (!entries.some((x) => x.nid === e.nid)) delete beneficiaries[e.nid];
+        return log({ ...d, entries, beneficiaries }, "إلغاء تحويل طبيب", `${e.nid} ← ${project} دور ${e.queue?.[project] ?? ""}`);
+      });
+      return null;
+    },
+    [db, user, log],
+  );
+
+  /** النقطة: خدمة بدون تطبيق الممول + موعد */
+  const serveWithoutDonor = useCallback(
+    (input: NoDonorInput): { error?: string; entryId?: string; due?: string; attempt?: number } => {
+      if (!user || !center) return { error: "انتهت الجلسة" };
+      if (user.role !== "POINT") return { error: "هذه الخدمة لموظف نقطة المشروع" };
+      if (!user.projects.includes(input.project)) return { error: "يمكنك إدخال الخدمة في مشاريعك فقط" };
+      const proj = db.projects.find((p) => p.code === input.project);
+      if (!proj?.deferCenters?.includes(center)) return { error: "هذا الخيار غير مفعّل لهذا المشروع في هذا المركز" };
+      const today = todayKey();
+      if (!input.due || input.due <= today || input.due > addDays(today, 90)) return { error: "اختر موعداً بعد اليوم وخلال 90 يوماً" };
+      const r = addEntry({ nid: input.nid, projects: [input.project], name: input.name, type: input.type, queueRef: input.queueRef });
+      if (!r.ok) return { error: r.error };
+      const entryId = r.entry.id;
+      let attempt = 1;
+      setDb((d) => {
+        const prev = d.appointments.filter((a) => a.doneEntry === entryId);
+        attempt = prev.reduce((m, a) => Math.max(m, a.attempt), 0) + 1;
+        const appt: Appointment = {
+          id: uuid(),
+          nid: input.nid,
+          center,
+          project: input.project,
+          due: input.due,
+          attempt,
+          createdEntry: entryId,
+          createdBy: user.id,
+          createdAt: new Date().toISOString(),
+        };
+        return log(
+          {
+            ...d,
+            entries: d.entries.map((e) => (e.id === entryId ? { ...e, noDonor: { reason: input.reason?.trim() || undefined } } : e)),
+            appointments: [...d.appointments, appt],
+          },
+          "خدمة بدون تطبيق الممول",
+          `${input.nid} · ${input.project} · موعد ${input.due}${attempt > 1 ? ` (محاولة ${attempt})` : ""}`,
+        );
+      });
+      return { entryId, due: input.due, attempt };
+    },
+    [db, user, center, log, addEntry],
+  );
+
   /* ===== الإدارة ===== */
 
   const saveUser = useCallback(
@@ -394,7 +533,12 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       setDb((d) => {
         const exists = d.projects.some((x) => x.code === p.code);
         return log(
-          { ...d, projects: exists ? d.projects.map((x) => (x.code === p.code ? p : x)) : [...d.projects, { ...p, color: p.color ?? nextColor(d.projects) }] },
+          {
+            ...d,
+            projects: exists
+              ? d.projects.map((x) => (x.code === p.code ? { ...x, ...p } : x))
+              : [...d.projects, { ...p, color: p.color ?? nextColor(d.projects), isDoctor: p.isDoctor ?? p.code.startsWith("DR") }],
+          },
           exists ? "تعديل مشروع" : "إضافة مشروع",
           p.name,
         );
@@ -421,6 +565,21 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     [log],
   );
 
+  const saveProjectOptions = useCallback(
+    (code: string, o: { isDoctor: boolean; deferCenters: CenterCode[]; deferDays: number }): string | null => {
+      if (!(o.deferDays >= 1 && o.deferDays <= 90)) return "مدة الموعد من 1 إلى 90 يوماً";
+      setDb((d) =>
+        log(
+          { ...d, projects: d.projects.map((p) => (p.code === code ? { ...p, isDoctor: o.isDoctor, deferCenters: [...new Set(o.deferCenters)], deferDays: o.deferDays } : p)) },
+          "خيارات مشروع",
+          code,
+        ),
+      );
+      return null;
+    },
+    [log],
+  );
+
   const saveSettings = useCallback((s: Settings) => setDb((d) => log({ ...d, settings: s }, "تعديل الإعدادات", "")), [log]);
 
   const value = useMemo<Ctx>(
@@ -444,6 +603,10 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       correctRouting: async (id, p, d) => correctRouting(id, p, d),
       referFromPoint: async (i) => referFromPoint(i),
       moveEntry: async (id, n) => moveEntry(id, n),
+      referToDoctor: async (i) => referToDoctor(i),
+      cancelDoctorReferral: async (id, p) => cancelDoctorReferral(id, p),
+      serveWithoutDonor: async (i) => serveWithoutDonor(i),
+      saveProjectOptions: async (c, o) => saveProjectOptions(c, o),
       saveUser: async (u) => saveUser({ ...u, password: u.password || db.users.find((x) => x.id === u.id)?.password || "1234" }),
       deleteUser: async (id) => (deleteUser(id), null),
       saveProject: async (p) => saveProject(p),
@@ -451,7 +614,9 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       renameCenter: async (c, n) => renameCenter(c, n),
       saveSettings: async (s) => (saveSettings(s), null),
     }, KEYS), KEYS),
-    [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
+    [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
+      referToDoctor, cancelDoctorReferral, serveWithoutDonor, saveProjectOptions,
+      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

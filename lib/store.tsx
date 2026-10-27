@@ -3,7 +3,7 @@
 import { tracked } from "./pending";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import type { CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
+import type { Appointment, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
 import { supabase, usernameToEmail } from "./supabase/client";
 import {
   errorText,
@@ -16,6 +16,7 @@ import {
   loadProjects,
   loadSettings,
   loadUsers,
+  loadAppointments,
   type EntryBatch,
   type EntryScope,
 } from "./data";
@@ -53,6 +54,9 @@ export interface AddEntryInput {
   queueRef?: string;
 }
 
+/** التاريخ قبل نافذة البيانات لتحميل المواعيد */
+const APPT_BACK_DAYS = 62;
+
 export interface Ctx {
   ready: boolean;
   online: boolean;
@@ -74,6 +78,11 @@ export interface Ctx {
   /** النقطة: تصحيح التوجيه، أو إنشاء تحويل جديد باسم موظف النقطة إن لم تمر الحالة على الاستقبال */
   referFromPoint: (input: ReferInput) => Promise<{ error?: string; queue?: Record<string, number>; created?: boolean }>;
   moveEntry: (entryId: string, newNid: string) => Promise<string | null>;
+  /** النقطة: تحويل الحالة لمشروع طبيب (إضافي، لا يلغي تحويلها الحالي) */
+  referToDoctor: (input: DoctorReferInput) => Promise<{ error?: string; queueNo?: number; entryId?: string }>;
+  cancelDoctorReferral: (entryId: string, project: string) => Promise<string | null>;
+  /** النقطة: خدمة بدون تطبيق الممول + موعد */
+  serveWithoutDonor: (input: NoDonorInput) => Promise<{ error?: string; entryId?: string; due?: string; attempt?: number }>;
 
   saveUser: (u: User) => Promise<string | null>;
   deleteUser: (id: string) => Promise<string | null>;
@@ -81,6 +90,27 @@ export interface Ctx {
   moveProject: (code: string, dir: -1 | 1) => Promise<void>;
   renameCenter: (code: CenterCode, name: string) => Promise<void>;
   saveSettings: (s: Settings) => Promise<string | null>;
+  saveProjectOptions: (code: string, o: { isDoctor: boolean; deferCenters: CenterCode[]; deferDays: number }) => Promise<string | null>;
+}
+
+export interface DoctorReferInput {
+  nid: string;
+  project: string;
+  /** مشروع النقطة التي تحوّل */
+  from?: string;
+  note?: string;
+  name?: string;
+  type?: IdType;
+}
+
+export interface NoDonorInput {
+  nid: string;
+  project: string;
+  due: string;
+  reason?: string;
+  name?: string;
+  type?: IdType;
+  queueRef?: string;
 }
 
 export const StoreContext = createContext<Ctx | null>(null);
@@ -96,6 +126,7 @@ const EMPTY: Db = {
   counters: {},
   changes: [],
   settings: { hintReception: "", hintPoint: "", idleMinutes: 30 },
+  appointments: [],
 };
 
 const strip = (u: User): SessionUser => {
@@ -110,6 +141,12 @@ function merge(d: Db, batch: EntryBatch, replace: (e: Entry) => boolean): Db {
   const ids = new Set(batch.entries.map((e) => e.id));
   const entries = d.entries.filter((e) => !replace(e) && !ids.has(e.id)).concat(batch.entries).sort(byTime);
   return { ...d, entries, beneficiaries: { ...d.beneficiaries, ...batch.beneficiaries } };
+}
+
+/** دمج المواعيد: تستبدل كل ما يطابق `replace` */
+function mergeAppointments(cur: Appointment[], fresh: Appointment[], replace: (a: Appointment) => boolean): Appointment[] {
+  const ids = new Set(fresh.map((a) => a.id));
+  return cur.filter((a) => !replace(a) && !ids.has(a.id)).concat(fresh).sort((a, b) => a.due.localeCompare(b.due));
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -139,7 +176,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const [projects, users, settings] = await Promise.all([loadProjects(sb), loadUsers(sb), loadSettings(sb)]);
       const order = new Map(projects.map((p) => [p.code, p.order]));
       const fromDay = addDays(today, -(back ? BACK_OFFICE_DAYS : STAFF_DAYS));
-      const [counters, changes, batches] = await Promise.all([
+      const [counters, changes, batches, appointments] = await Promise.all([
         loadCounters(sb, fromDay),
         u.role === "ADMIN" ? loadChanges(sb) : Promise.resolve([]),
         back
@@ -148,9 +185,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               loadEntries(sb, { day: today, center: c ?? undefined }, order),
               loadEntries(sb, { fromDay, userId: u.id, center: c ?? undefined }, order),
             ]),
+        loadAppointments(sb, addDays(today, -APPT_BACK_DAYS)).catch(() => [] as Appointment[]),
       ]);
       setDb((d) => {
-        let next: Db = { ...d, projects, users, settings, counters, changes, entries: [], beneficiaries: {} };
+        let next: Db = { ...d, projects, users, settings, counters, changes, appointments, entries: [], beneficiaries: {} };
         batches.forEach((b) => (next = merge(next, b, () => false)));
         return next;
       });
@@ -166,10 +204,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const c = isStaff(u.role) ? centerRef.current ?? undefined : undefined;
     const scope: EntryScope = { day: today, ...(c ? { center: c } : {}) };
     try {
-      const [batch, counters] = await Promise.all([loadEntries(sb, scope, projectOrder()), loadCounters(sb, today)]);
+      const [batch, counters, appointments] = await Promise.all([
+        loadEntries(sb, scope, projectOrder()),
+        loadCounters(sb, today),
+        loadAppointments(sb, addDays(today, -APPT_BACK_DAYS)).catch(() => null),
+      ]);
       setDb((d) => ({
         ...merge(d, batch, (e) => e.date === today && (!c || e.center === c)),
         counters: { ...d.counters, ...counters },
+        ...(appointments ? { appointments: mergeAppointments(d.appointments, appointments, () => true) } : {}),
       }));
     } catch {
       /* يُعاد عند الحدث التالي */
@@ -179,13 +222,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const lookup = useCallback(
     async (nid: string) => {
-      const [b, batch] = await Promise.all([loadBeneficiary(sb, nid), loadEntries(sb, { nid }, projectOrder())]);
+      const [b, batch, appts] = await Promise.all([
+        loadBeneficiary(sb, nid),
+        loadEntries(sb, { nid }, projectOrder()),
+        loadAppointments(sb, "", nid).catch(() => null),
+      ]);
       setDb((d) => {
         const next = merge(d, batch, (e) => e.nid === nid);
         const beneficiaries = { ...next.beneficiaries };
         if (b) beneficiaries[nid] = b;
         else delete beneficiaries[nid];
-        return { ...next, beneficiaries };
+        return { ...next, beneficiaries, ...(appts ? { appointments: mergeAppointments(next.appointments, appts, (a) => a.nid === nid) } : {}) };
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -210,6 +257,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .channel("entries-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, schedule)
       .on("postgres_changes", { event: "*", schema: "public", table: "entry_projects" }, schedule)
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, schedule)
       .subscribe();
   }, [sb, refreshToday]);
 
@@ -461,6 +509,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [rpc, after],
   );
 
+  const referToDoctor = useCallback(
+    async (input: DoctorReferInput) => {
+      const c = centerRef.current;
+      if (!c) return { error: "انتهت الجلسة، سجّل الدخول من جديد" };
+      const r = await rpc<{ entry_id: string; queue_no: number }>("refer_to_doctor", {
+        p_nid: input.nid,
+        p_center: c,
+        p_project: input.project,
+        p_from: input.from ?? null,
+        p_note: input.note?.trim() || null,
+        p_name: input.name?.trim() || null,
+        p_type: input.type ?? null,
+      });
+      if (r.error || !r.data) return { error: r.error ?? "تعذّر التحويل" };
+      await after([input.nid]);
+      return { queueNo: r.data.queue_no, entryId: r.data.entry_id };
+    },
+    [rpc, after],
+  );
+
+  const cancelDoctorReferral = useCallback(
+    async (entryId: string, project: string) => {
+      const nid = nidOf(entryId);
+      const r = await rpc("cancel_doctor_referral", { p_entry: entryId, p_project: project });
+      if (r.error) return r.error;
+      await after(nid ? [nid] : []);
+      return null;
+    },
+    [rpc, after],
+  );
+
+  const serveWithoutDonor = useCallback(
+    async (input: NoDonorInput) => {
+      const c = centerRef.current;
+      if (!c) return { error: "انتهت الجلسة، سجّل الدخول من جديد" };
+      const r = await rpc<{ entry_id: string; due_day: string; attempt: number }>("serve_without_donor", {
+        p_nid: input.nid,
+        p_center: c,
+        p_project: input.project,
+        p_due: input.due,
+        p_reason: input.reason?.trim() || null,
+        p_name: input.name?.trim() || null,
+        p_type: input.type ?? null,
+        p_queue_ref: input.queueRef ?? null,
+      });
+      if (r.error || !r.data) return { error: r.error ?? "تعذّر الإدخال" };
+      await after([input.nid]);
+      return { entryId: r.data.entry_id, due: r.data.due_day, attempt: r.data.attempt };
+    },
+    [rpc, after],
+  );
+
   /* ===== الإدارة ===== */
 
   const saveUser = useCallback(
@@ -537,6 +637,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [rpc, reloadRefs],
   );
 
+  const saveProjectOptions = useCallback(
+    async (code: string, o: { isDoctor: boolean; deferCenters: CenterCode[]; deferDays: number }) => {
+      const r = await rpc("save_project_options", { p_code: code, p_is_doctor: o.isDoctor, p_defer_centers: o.deferCenters, p_defer_days: o.deferDays });
+      if (r.error) return r.error;
+      await reloadRefs();
+      return null;
+    },
+    [rpc, reloadRefs],
+  );
+
   const refresh = useCallback(async () => {
     const u = userRef.current;
     if (u) await loadAll(u, centerRef.current);
@@ -549,11 +659,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         {
           ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
           addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
-          saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings,
+          referToDoctor, cancelDoctorReferral, serveWithoutDonor,
+          saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, saveProjectOptions,
         },
-        ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings"],
+        ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry",
+          "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor",
+          "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings", "saveProjectOptions"],
       ),
-    [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry, saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
+    [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
+      referToDoctor, cancelDoctorReferral, serveWithoutDonor,
+      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, saveProjectOptions],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

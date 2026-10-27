@@ -31,8 +31,10 @@ export function RoutingPanel({
 }) {
   const { db } = useStore();
   const mine = user.projects;
+  // تحويلات الطبيب من النقاط تُعرض في قسمها، ولا تُعتبر توجيهاً من الاستقبال إلا لنقطة الطبيب نفسها
+  const shown = (reception?.projects ?? []).filter((p) => mine.includes(p) || !reception?.referrals?.[p]);
 
-  if (!reception) {
+  if (!reception || !shown.length) {
     return (
       <div className="overflow-hidden rounded-2xl border border-line bg-sunken">
         <div className="flex gap-3 px-4 py-3.5 text-sm">
@@ -53,8 +55,8 @@ export function RoutingPanel({
     );
   }
 
-  const forMe = reception.projects.filter((p) => mine.includes(p));
-  const others = reception.projects.filter((p) => !mine.includes(p));
+  const forMe = shown.filter((p) => mine.includes(p));
+  const others = shown.filter((p) => !mine.includes(p));
   const ok = forMe.length > 0;
 
   return (
@@ -134,15 +136,18 @@ export function RoutingDialog({
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const create = !reception;
+  // التوجيه الحالي بدون تحويلات الطبيب من النقاط (تبقى كما هي ولا تُعدَّل من هنا)
+  const routed = (reception?.projects ?? []).filter((p) => !reception?.referrals?.[p]);
 
   useEffect(() => {
     if (!open) return;
-    setSel(reception?.projects ?? []);
+    setSel(routed);
     setDel(myEntries.map((e) => e.id));
     setErr("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, reception, myEntries]);
 
-  const changed = sel.slice().sort().join() !== (reception?.projects ?? []).slice().sort().join();
+  const changed = sel.slice().sort().join() !== routed.slice().sort().join();
 
   async function save() {
     if (busy) return;
@@ -185,7 +190,7 @@ export function RoutingDialog({
       <div className="space-y-5">
         {reception && (
           <div className="rounded-xl bg-sunken px-4 py-3 text-sm">
-            <span className="text-muted">التوجيه الحالي:</span> <span className="font-bold">{names(db, reception.projects)}</span>
+            <span className="text-muted">التوجيه الحالي:</span> <span className="font-bold">{names(db, routed)}</span>
             <span className="text-muted">
               {" "}
               · <span className="num">{formatTime(reception.at)}</span> · {userName(db, reception.userId)}
@@ -196,7 +201,7 @@ export function RoutingDialog({
         <fieldset>
           <legend className="mb-2.5 text-sm font-bold">{create ? "حوّل الحالة إلى" : "المشروع الصحيح"}</legend>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {projects.map((p) => (
+            {projects.filter((p) => !reception?.referrals?.[p.code]).map((p) => (
               <CheckBox
                 key={p.code}
                 checked={sel.includes(p.code)}

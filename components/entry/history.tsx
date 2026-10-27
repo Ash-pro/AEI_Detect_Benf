@@ -1,6 +1,7 @@
 "use client";
 
-import { PenLine, Store, Stethoscope } from "lucide-react";
+import { CalendarClock, PenLine, Store, Stethoscope } from "lucide-react";
+import { appointmentOf, apptWhen } from "@/lib/appointments";
 import type { Db, Entry } from "@/lib/types";
 import { centerName, correctionText, projectName, userName } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
@@ -37,6 +38,32 @@ export function ProjectChip({ db, code, number, tone = "sunken" }: { db: Db; cod
         </span>
       ) : null}
     </span>
+  );
+}
+
+/** إشارات إضافية على الإدخال: خدمة بدون تطبيق الممول، وتحويلات الطبيب من النقاط */
+export function EntryBadges({ e, db }: { e: Entry; db: Db }) {
+  const appt = e.noDonor ? appointmentOf(db, e.id) : undefined;
+  const refs = e.referrals ? Object.entries(e.referrals) : [];
+  if (!e.noDonor && !refs.length) return null;
+  return (
+    <>
+      {e.noDonor && (
+        <span
+          className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn"
+          title={[e.noDonor.reason, appt ? apptWhen(appt) : ""].filter(Boolean).join(" · ")}
+        >
+          <CalendarClock className="size-3" />
+          بدون بت{appt ? ` · موعد ${dayFull(appt.due)}${appt.doneEntry ? " ✓" : ""}` : ""}
+        </span>
+      )}
+      {refs.map(([p, r]) => (
+        <span key={p} className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info" title={r.note}>
+          <Stethoscope className="size-3" />
+          {projectName(db, p)} بتحويل من نقطة{r.from ? ` ${projectName(db, r.from)}` : ""}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -78,6 +105,7 @@ export function HistoryRow({
         {e.projects.map((p) => (
           <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />
         ))}
+        <EntryBadges e={e} db={db} />
         {e.corrected && (
           <span
             className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn"

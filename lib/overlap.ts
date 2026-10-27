@@ -39,7 +39,16 @@ export interface OverlapReport {
 export const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 export function overlapReport(db: Db, from: string, to: string, center: CenterFilter, scope: OverlapScope): OverlapReport {
-  const list = db.entries.filter((e) => e.kind === "POINT" && e.date >= from && e.date <= to && (center === "ALL" || e.center === center));
+  // مشاريع الطبيب خدمة طبية إضافية: لا تُحسب تكراراً
+  const doctors = new Set(db.projects.filter((p) => p.isDoctor).map((p) => p.code));
+  const list = db.entries.filter(
+    (e) =>
+      e.kind === "POINT" &&
+      e.date >= from &&
+      e.date <= to &&
+      (center === "ALL" || e.center === center) &&
+      !e.projects.every((p) => doctors.has(p)),
+  );
 
   const byNid = new Map<string, Entry[]>();
   list.forEach((e) => {

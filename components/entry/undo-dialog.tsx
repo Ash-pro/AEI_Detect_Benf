@@ -86,6 +86,7 @@ export function UndoEntryDialog({ entry, onClose, onDone }: { entry: Entry | nul
         <p className="flex gap-2 rounded-xl bg-warn-soft px-4 py-3 text-sm font-semibold text-warn">
           <TriangleAlert className="size-5 shrink-0" />
           {q.number ? "يُلغى تسجيل الخدمة وتعود الحالة لقائمة الانتظار بنفس رقم دورها." : "يُلغى تسجيل الخدمة لهذه الحالة اليوم."}{" "}
+          {entry.noDonor ? "ويُلغى موعدها المحجوز. " : ""}
           {onlyEntry ? "ولأنها أول مرة للحالة في النظام، يُحذف ملفها أيضاً." : "ملف المستفيد يبقى كما هو."}
         </p>
         <FieldError>{err}</FieldError>

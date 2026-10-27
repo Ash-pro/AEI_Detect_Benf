@@ -1,7 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Beneficiary, Center, CenterCode, ChangeLog, Entry, IdType, Project, Role, Settings, User } from "./types";
+import type { Appointment, Beneficiary, Center, CenterCode, ChangeLog, Entry, IdType, Project, Referral, Role, Settings, User } from "./types";
 
 /* قراءة البيانات من Supabase وتحويلها لنفس شكل الواجهة */
 
@@ -29,9 +29,13 @@ export async function loadCenters(sb: SupabaseClient): Promise<Center[]> {
   return ((data ?? []) as CenterRow[]).map((c) => ({ code: c.code, name: c.name, short: c.short }));
 }
 
-interface ProjectRow { code: string; name: string; active: boolean; sort_order: number; color: string | null; project_centers: { center_code: CenterCode }[] }
+interface ProjectRow {
+  code: string; name: string; active: boolean; sort_order: number; color: string | null;
+  is_doctor: boolean | null; defer_centers: CenterCode[] | null; defer_days: number | null;
+  project_centers: { center_code: CenterCode }[];
+}
 export async function loadProjects(sb: SupabaseClient): Promise<Project[]> {
-  const { data, error } = await sb.from("projects").select("code, name, active, sort_order, color, project_centers(center_code)").order("sort_order");
+  const { data, error } = await sb.from("projects").select("code, name, active, sort_order, color, is_doctor, defer_centers, defer_days, project_centers(center_code)").order("sort_order");
   if (error) throw new Error(error.message);
   return ((data ?? []) as ProjectRow[]).map((p) => ({
     code: p.code,
@@ -40,6 +44,9 @@ export async function loadProjects(sb: SupabaseClient): Promise<Project[]> {
     order: p.sort_order,
     color: p.color ?? undefined,
     centers: p.project_centers.map((x) => x.center_code),
+    isDoctor: Boolean(p.is_doctor),
+    deferCenters: p.defer_centers ?? [],
+    deferDays: p.defer_days ?? 14,
   }));
 }
 
@@ -98,12 +105,16 @@ export async function loadCounters(sb: SupabaseClient, fromDay: string): Promise
 /* ===== الإدخالات ===== */
 
 const ENTRY_SELECT =
-  "id, nid, center_code, user_id, kind, at, day, is_new, queue_ref, corrected_by, corrected_at, corrected_from, entry_projects(project_code, queue_no, status), beneficiaries(nid, name, id_type, created_at)";
+  "id, nid, center_code, user_id, kind, at, day, is_new, queue_ref, corrected_by, corrected_at, corrected_from, no_donor, no_donor_reason, entry_projects(project_code, queue_no, status, referred_by, referred_from, ref_note), beneficiaries(nid, name, id_type, created_at)";
 
 interface EntryRow {
   id: string; nid: string; center_code: CenterCode; user_id: string; kind: Entry["kind"]; at: string; day: string; is_new: boolean;
   queue_ref: string | null; corrected_by: string | null; corrected_at: string | null; corrected_from: string[] | null;
-  entry_projects: { project_code: string; queue_no: number | null; status: "active" | "moved" }[];
+  no_donor: boolean | null; no_donor_reason: string | null;
+  entry_projects: {
+    project_code: string; queue_no: number | null; status: "active" | "moved";
+    referred_by: string | null; referred_from: string | null; ref_note: string | null;
+  }[];
   beneficiaries: { nid: string; name: string; id_type: IdType | null; created_at: string } | null;
 }
 
@@ -124,6 +135,10 @@ function toBatch(rows: EntryRow[], order: Map<string, number>): EntryBatch {
     active.forEach((p) => p.queue_no && (queue[p.project_code] = p.queue_no));
     const queueOut: Record<string, number> = {};
     moved.forEach((p) => p.queue_no && (queueOut[p.project_code] = p.queue_no));
+    const referrals: Record<string, Referral> = {};
+    active.forEach((p) => {
+      if (p.referred_by) referrals[p.project_code] = { by: p.referred_by, from: p.referred_from ?? undefined, note: p.ref_note ?? undefined };
+    });
     return {
       id: r.id,
       nid: r.nid,
@@ -138,6 +153,8 @@ function toBatch(rows: EntryRow[], order: Map<string, number>): EntryBatch {
       ...(Object.keys(queue).length ? { queue } : {}),
       ...(Object.keys(queueOut).length ? { queueOut } : {}),
       ...(r.queue_ref ? { queueRef: r.queue_ref } : {}),
+      ...(r.no_donor ? { noDonor: { reason: r.no_donor_reason ?? undefined } } : {}),
+      ...(Object.keys(referrals).length ? { referrals } : {}),
     };
   });
   return { entries, beneficiaries };
@@ -162,6 +179,36 @@ export async function loadEntries(sb: SupabaseClient, scope: EntryScope, project
     return q.order("at").order("id").range(a, b);
   });
   return toBatch(rows, projectOrder);
+}
+
+/* ===== المواعيد ===== */
+
+interface AppointmentRow {
+  id: string; nid: string; center_code: CenterCode; project_code: string; due_day: string; attempt: number;
+  created_entry: string; done_entry: string | null; created_by: string | null; created_at: string;
+}
+const APPT_SELECT = "id, nid, center_code, project_code, due_day, attempt, created_entry, done_entry, created_by, created_at";
+const toAppointment = (a: AppointmentRow): Appointment => ({
+  id: a.id,
+  nid: a.nid,
+  center: a.center_code,
+  project: a.project_code,
+  due: a.due_day,
+  attempt: a.attempt,
+  createdEntry: a.created_entry,
+  doneEntry: a.done_entry ?? undefined,
+  createdBy: a.created_by ?? undefined,
+  createdAt: a.created_at,
+});
+
+/** المواعيد القادمة والمفتوحة، والمنتهية خلال الفترة */
+export async function loadAppointments(sb: SupabaseClient, fromDay: string, nid?: string): Promise<Appointment[]> {
+  const rows = await all<AppointmentRow>((a, b) => {
+    let q = sb.from("appointments").select(APPT_SELECT);
+    q = nid ? q.eq("nid", nid) : q.or(`due_day.gte.${fromDay},done_entry.is.null`);
+    return q.order("due_day").order("id").range(a, b);
+  });
+  return rows.map(toAppointment);
 }
 
 export async function loadBeneficiary(sb: SupabaseClient, nid: string): Promise<Beneficiary | null> {

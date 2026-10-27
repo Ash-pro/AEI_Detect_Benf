@@ -175,6 +175,8 @@ function LoginInner() {
               ["reception.gaza", "استقبال غزة"],
               ["multi.khy", "نقطة WFP + السيلياك · خانيونس"],
               ["unicef.khy", "نقطة UNICEF · خانيونس"],
+              ["wfptsfp.khy", "نقطة TSFP-WFP · خانيونس"],
+              ["drunicef.khy", "طبيب Dr UNICEF · خانيونس"],
             ].map(([u, label]) => (
               <button
                 key={u}
