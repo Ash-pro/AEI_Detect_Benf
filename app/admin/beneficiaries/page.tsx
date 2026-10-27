@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Fingerprint, Pencil, Search, UserPlus, UserRound, X } from "lucide-react";
 import { BeneficiaryEditor } from "@/components/entry/edit-dialog";
 import { IdTypeTag } from "@/components/entry/id-fields";
-import { PageHead, StatCard } from "@/components/admin/bits";
+import { FilterSelect, PageHead, ResetFilters, Segmented, StatCard } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
 import { can } from "@/lib/permissions";
-import { entriesOf } from "@/lib/queries";
-import type { Entry } from "@/lib/types";
+import { allProjects, entriesOf } from "@/lib/queries";
+import type { Entry, IdType } from "@/lib/types";
 import { dateKey, formatDate, normalizeArabicName, normalizeDigits, todayKey } from "@/lib/utils";
 
 /** الشاشة 10 — المستفيدون والإدخالات */
@@ -21,25 +21,59 @@ export default function BeneficiariesPage() {
   const [q, setQ] = useState("");
   const [nid, setNid] = useState<string | null>(null);
   const [edit, setEdit] = useState<Entry | null>(null);
+  // فلاتر القائمة
+  const [fType, setFType] = useState<"ALL" | IdType | "NONE">("ALL");
+  const [fReg, setFReg] = useState<"ALL" | "TODAY" | "MONTH">("ALL");
+  const [fProj, setFProj] = useState("ALL");
+  const [fSort, setFSort] = useState<"new" | "visits" | "name">("new");
+  const [limit, setLimit] = useState(50);
+  // سجل المستفيد المختار
+  const [hKind, setHKind] = useState<"ALL" | Entry["kind"]>("ALL");
 
   const all = useMemo(() => Object.values(db.beneficiaries), [db.beneficiaries]);
   const total = all.length;
   const today = todayKey();
   const newToday = useMemo(() => all.filter((b) => dateKey(b.createdAt) === today).length, [all, today]);
   const newMonth = useMemo(() => all.filter((b) => dateKey(b.createdAt).startsWith(today.slice(0, 7))).length, [all, today]);
-  const recent = useMemo(() => [...all].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20), [all]);
+  /* عدد الإدخالات والمشاريع لكل هوية — يُحسب مرة واحدة */
+  const perNid = useMemo(() => {
+    const m = new Map<string, { n: number; projects: Set<string> }>();
+    db.entries.forEach((e) => {
+      const x = m.get(e.nid) ?? { n: 0, projects: new Set<string>() };
+      x.n++;
+      e.projects.forEach((p) => x.projects.add(p));
+      m.set(e.nid, x);
+    });
+    return m;
+  }, [db.entries]);
+  const filtering = fType !== "ALL" || fReg !== "ALL" || fProj !== "ALL" || fSort !== "new";
+  const clearFilters = () => {
+    setFType("ALL");
+    setFReg("ALL");
+    setFProj("ALL");
+    setFSort("new");
+  };
   const searching = q.trim().length > 0;
   const results = useMemo(() => {
     const digits = normalizeDigits(q);
     const term = normalizeArabicName(q);
-    if (!q.trim() || (digits.length < 3 && term.length < 2)) return [];
-    return all
-      .filter((b) => (digits.length >= 3 && b.nid.includes(digits)) || (term.length >= 2 && !digits && normalizeArabicName(b.name).includes(term)))
-      .slice(0, 30);
-  }, [all, q]);
+    if (searching && digits.length < 3 && term.length < 2) return [];
+    const list = all
+      .filter((b) => !searching || (digits.length >= 3 && b.nid.includes(digits)) || (term.length >= 2 && !digits && normalizeArabicName(b.name).includes(term)))
+      .filter((b) => fType === "ALL" || (fType === "NONE" ? !b.type : b.type === fType))
+      .filter((b) => fReg === "ALL" || (fReg === "TODAY" ? dateKey(b.createdAt) === today : dateKey(b.createdAt).startsWith(today.slice(0, 7))))
+      .filter((b) => fProj === "ALL" || perNid.get(b.nid)?.projects.has(fProj));
+    if (fSort === "new") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (fSort === "visits") list.sort((a, b) => (perNid.get(b.nid)?.n ?? 0) - (perNid.get(a.nid)?.n ?? 0));
+    if (fSort === "name") list.sort((a, b) => (a.name || "ي").localeCompare(b.name || "ي", "ar"));
+    return list;
+  }, [all, q, searching, fType, fReg, fProj, fSort, perNid, today]);
+  useEffect(() => setLimit(50), [q, fType, fReg, fProj, fSort]);
+  const listed = searching || filtering ? results.slice(0, limit) : results.slice(0, 20);
 
   const b = nid ? db.beneficiaries[nid] : undefined;
-  const history = nid ? entriesOf(db, nid) : [];
+  const fullHistory = nid ? entriesOf(db, nid) : [];
+  const history = fullHistory.filter((e) => hKind === "ALL" || e.kind === hKind);
 
   return (
     <>
@@ -72,10 +106,62 @@ export default function BeneficiariesPage() {
                 </button>
               )}
             </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <FilterSelect
+                label="نوع الهوية"
+                value={fType}
+                all="ALL"
+                onChange={setFType}
+                className="flex-1"
+                options={[
+                  { value: "ALL", label: "كل الأنواع" },
+                  { value: "MOTHER", label: "أم" },
+                  { value: "FATHER", label: "أب" },
+                  { value: "CHILD", label: "طفل" },
+                  { value: "NONE", label: "بدون نوع" },
+                ]}
+              />
+              <FilterSelect
+                label="التسجيل"
+                value={fReg}
+                all="ALL"
+                onChange={setFReg}
+                className="flex-1"
+                options={[
+                  { value: "ALL", label: "كل الأوقات" },
+                  { value: "TODAY", label: "سُجلت اليوم" },
+                  { value: "MONTH", label: "سُجلت هذا الشهر" },
+                ]}
+              />
+              <FilterSelect
+                label="المشروع"
+                value={fProj}
+                all="ALL"
+                onChange={setFProj}
+                className="flex-1"
+                options={[{ value: "ALL", label: "كل المشاريع" }, ...allProjects(db).map((p) => ({ value: p.code, label: p.name }))]}
+              />
+              <FilterSelect
+                label="الترتيب"
+                value={fSort}
+                all="new"
+                onChange={setFSort}
+                className="flex-1"
+                options={[
+                  { value: "new", label: "الأحدث تسجيلاً" },
+                  { value: "visits", label: "الأكثر إدخالات" },
+                  { value: "name", label: "الاسم (أ-ي)" },
+                ]}
+              />
+              <ResetFilters show={filtering} onClick={clearFilters} />
+            </div>
           </div>
-          {!searching && <div className="bg-sunken/60 px-4 py-2 text-xs font-semibold text-muted">آخر المسجلين</div>}
+          <div className="num flex items-center justify-between bg-sunken/60 px-4 py-2 text-xs font-semibold text-muted">
+            <span>{searching || filtering ? `${results.length.toLocaleString("en-US")} نتيجة` : "آخر المسجلين"}</span>
+            {(searching || filtering) && results.length > listed.length && <span>يظهر أول {listed.length}</span>}
+          </div>
           <ul className="max-h-[560px] divide-y divide-line/60 overflow-y-auto">
-            {(searching ? results : recent).map((r) => (
+            {listed.map((r) => (
               <li key={r.nid}>
                 <button
                   onClick={() => {
@@ -94,14 +180,23 @@ export default function BeneficiariesPage() {
                     <span className="num text-xs text-muted">{r.nid}</span>
                   </span>
                   <span className="num shrink-0 text-end text-xs text-muted">
-                    {entriesOf(db, r.nid).length} إدخال
+                    {perNid.get(r.nid)?.n ?? 0} إدخال
                     {!searching && <span className="block">{formatDate(r.createdAt)}</span>}
                   </span>
                 </button>
               </li>
             ))}
-            {searching && !results.length && (
-              <li className="px-4 py-10 text-center text-sm text-muted">لا نتائج. اكتب 3 أرقام على الأقل من الهوية أو حرفين من الاسم</li>
+            {(searching || filtering) && !results.length && (
+              <li className="px-4 py-10 text-center text-sm text-muted">
+                {searching ? "لا نتائج. اكتب 3 أرقام على الأقل من الهوية أو حرفين من الاسم" : "لا توجد هويات مطابقة للفلاتر"}
+              </li>
+            )}
+            {(searching || filtering) && results.length > listed.length && (
+              <li>
+                <button onClick={() => setLimit((n) => n + 50)} className="flex min-h-12 w-full items-center justify-center text-sm font-bold text-brand hover:bg-sunken">
+                  عرض المزيد ({(results.length - listed.length).toLocaleString("en-US")})
+                </button>
+              </li>
             )}
           </ul>
         </Card>
@@ -119,8 +214,20 @@ export default function BeneficiariesPage() {
               )}
               <div className="text-sm text-muted">
                 <span className="num font-bold text-ink">{b.nid}</span> · مسجلة منذ <span className="num">{formatDate(b.createdAt)}</span> ·{" "}
-                <span className="num">{history.length}</span> إدخال
+                <span className="num">{fullHistory.length}</span> إدخال
               </div>
+              {fullHistory.length > 0 && (
+                <Segmented
+                  label="نوع الإدخال"
+                  value={hKind}
+                  onChange={setHKind}
+                  options={[
+                    { value: "ALL", label: "الكل", count: fullHistory.length },
+                    { value: "RECEPTION", label: "استقبال", count: fullHistory.filter((e) => e.kind === "RECEPTION").length },
+                    { value: "POINT", label: "نقاط", count: fullHistory.filter((e) => e.kind === "POINT").length },
+                  ]}
+                />
+              )}
             </div>
             <ul className="divide-y divide-line/60">
               {history.map((e) => (

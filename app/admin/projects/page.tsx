@@ -3,9 +3,23 @@
 import { ProjectOptionsButton, ProjectOptionsDialog } from "@/components/admin/project-options";
 import { useBusy } from "@/lib/use-busy";
 import { Spinner } from "@/components/ui/spinner";
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Building2, Check, Plus } from "lucide-react";
-import { PageHead } from "@/components/admin/bits";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, Building2, Check, GripVertical, Info, Plus } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { CSS } from "@dnd-kit/utilities";
+import { FilterSelect, PageHead, ResetFilters, SearchBox } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckBox } from "@/components/ui/check";
@@ -18,7 +32,63 @@ import { useStore } from "@/lib/store";
 import { allProjects } from "@/lib/queries";
 import { PALETTE, projectColor } from "@/lib/project-colors";
 import type { CenterCode, Project } from "@/lib/types";
-import { cn, todayKey } from "@/lib/utils";
+import { cn, normalizeArabicName, todayKey } from "@/lib/utils";
+
+/* ================= السحب والإفلات ================= */
+
+type Handle = { ref: (el: HTMLElement | null) => void; attributes: DraggableAttributes; listeners: DraggableSyntheticListeners };
+
+/** مقبض السحب: اللمس والماوس يبدآن السحب منه فقط حتى يبقى تمرير الصفحة طبيعياً */
+function DragHandle({ handle, name, disabled, className }: { handle: Handle; name: string; disabled?: boolean; className?: string }) {
+  return (
+    <button
+      ref={handle.ref}
+      type="button"
+      {...handle.attributes}
+      {...handle.listeners}
+      disabled={disabled}
+      aria-label={`اسحب لتغيير ترتيب ${name}`}
+      title={disabled ? "أزل الفلاتر لتغيير الترتيب" : "اسحب لتغيير الترتيب"}
+      className={cn(
+        "focus-ring grid shrink-0 touch-none place-items-center rounded-lg border border-line text-muted hover:bg-sunken hover:text-ink",
+        disabled ? "cursor-not-allowed opacity-30" : "cursor-grab active:cursor-grabbing",
+        className,
+      )}
+    >
+      <GripVertical className="size-5" />
+    </button>
+  );
+}
+
+function useSortableItem(id: string, disabled: boolean) {
+  const s = useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(s.transform),
+    transition: s.transition,
+    position: "relative",
+    zIndex: s.isDragging ? 20 : undefined,
+  };
+  const handle: Handle = { ref: s.setActivatorNodeRef, attributes: s.attributes, listeners: s.listeners };
+  return { setNodeRef: s.setNodeRef, style, handle, dragging: s.isDragging };
+}
+
+function SortableTr({ id, disabled, className, children }: { id: string; disabled: boolean; className?: string; children: (h: Handle) => React.ReactNode }) {
+  const { setNodeRef, style, handle, dragging } = useSortableItem(id, disabled);
+  return (
+    <tr ref={setNodeRef} style={style} className={cn(className, dragging && "bg-surface shadow-pop ring-2 ring-brand/30")}>
+      {children(handle)}
+    </tr>
+  );
+}
+
+function SortableCard({ id, disabled, children }: { id: string; disabled: boolean; children: (h: Handle) => React.ReactNode }) {
+  const { setNodeRef, style, handle, dragging } = useSortableItem(id, disabled);
+  return (
+    <div ref={setNodeRef} style={style} className={cn(dragging && "rounded-2xl shadow-pop ring-2 ring-brand/30")}>
+      {children(handle)}
+    </div>
+  );
+}
 
 /** لون الدور المميز للمشروع */
 function ColorPicker({ color, name, onPick }: { color: string; name: string; onPick: (c: string) => void }) {
@@ -68,11 +138,40 @@ function ColorPicker({ color, name, onPick }: { color: string; name: string; onP
 
 /** الشاشة 9 — المشاريع والمراكز */
 export default function ProjectsPage() {
-  const { db, saveProject, moveProject, renameCenter } = useStore();
+  const { db, saveProject, moveProject, reorderProjects, renameCenter } = useStore();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [options, setOptions] = useState<Project | null>(null);
   const list = allProjects(db);
+
+  // الفلاتر
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState<"ALL" | "ACTIVE" | "OFF">("ALL");
+  const [fCenter, setFCenter] = useState<"ALL" | CenterCode>("ALL");
+  const [kind, setKind] = useState<"ALL" | "DOCTOR" | "DEFER" | "NORMAL">("ALL");
+  const filtered = useMemo(() => {
+    const term = normalizeArabicName(q.toLowerCase());
+    return list
+      .filter((p) => status === "ALL" || (status === "ACTIVE" ? p.active : !p.active))
+      .filter((p) => fCenter === "ALL" || p.centers.includes(fCenter))
+      .filter((p) =>
+        kind === "ALL"
+          ? true
+          : kind === "DOCTOR"
+            ? p.isDoctor
+            : kind === "DEFER"
+              ? (p.deferCenters ?? []).length > 0
+              : !p.isDoctor && !(p.deferCenters ?? []).length,
+      )
+      .filter((p) => !term || normalizeArabicName(p.name.toLowerCase()).includes(term) || p.code.toLowerCase().includes(term));
+  }, [list, q, status, fCenter, kind]);
+  const filtering = Boolean(q.trim()) || status !== "ALL" || fCenter !== "ALL" || kind !== "ALL";
+  const clearFilters = () => {
+    setQ("");
+    setStatus("ALL");
+    setFCenter("ALL");
+    setKind("ALL");
+  };
   const month = todayKey().slice(0, 7);
   const monthCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -90,6 +189,48 @@ export default function ProjectsPage() {
       else if (ok) toast(ok);
     });
   const move = (code: string, dir: -1 | 1) => run(`${code}:${dir}`, () => moveProject(code, dir));
+
+  /* السحب: يعمل على القائمة الكاملة فقط (بدون فلاتر) حتى يكون الترتيب واضحاً */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const lockDrag = filtering || busy !== null;
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id || lockDrag) return;
+    const codes = list.map((p) => p.code);
+    const from = codes.indexOf(String(active.id));
+    const to = codes.indexOf(String(over.id));
+    if (from < 0 || to < 0) return;
+    const moved = list[from];
+    void run("drag", async () => {
+      const e = await reorderProjects(arrayMove(codes, from, to));
+      toast(e ?? `تم نقل ${moved.name} إلى الترتيب ${to + 1}`, e ? "bad" : "ok");
+    });
+  };
+  // رسائل قارئ الشاشة توضع في body (وليس داخل الجدول) حتى تبقى بنية HTML سليمة
+  const [portal, setPortal] = useState<HTMLElement>();
+  useEffect(() => setPortal(document.body), []);
+  const nameOf = (id: string | number) => list.find((p) => p.code === id)?.name ?? String(id);
+  const posOf = (id: string | number) => list.findIndex((p) => p.code === id) + 1;
+  const dndProps = {
+    sensors,
+    collisionDetection: closestCenter,
+    onDragEnd,
+    modifiers: [restrictToVerticalAxis, restrictToParentElement],
+    accessibility: {
+      container: portal,
+      screenReaderInstructions: { draggable: "لتحريك المشروع: اضغط مسافة للالتقاط، ثم الأسهم للتحريك، ثم مسافة للإفلات أو Escape للإلغاء" },
+      announcements: {
+        onDragStart: ({ active }: { active: { id: string | number } }) => `التقطت ${nameOf(active.id)}`,
+        onDragOver: ({ over }: { over: { id: string | number } | null }) => (over ? `فوق الترتيب ${posOf(over.id)}` : ""),
+        onDragEnd: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+          over ? `أُفلت ${nameOf(active.id)} في الترتيب ${posOf(over.id)}` : `أُلغي نقل ${nameOf(active.id)}`,
+        onDragCancel: ({ active }: { active: { id: string | number } }) => `أُلغي نقل ${nameOf(active.id)}`,
+      },
+    },
+  };
+  const ids = filtered.map((p) => p.code);
 
   const toggleCenter = (p: Project, c: CenterCode) => {
     const centers = p.centers.includes(c) ? p.centers.filter((x) => x !== c) : [...p.centers, c];
@@ -110,11 +251,60 @@ export default function ProjectsPage() {
         }
       />
 
+      {/* الفلاتر */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-surface p-3 shadow-card">
+        <SearchBox value={q} onChange={setQ} placeholder="بحث باسم المشروع أو الرمز" />
+        <FilterSelect
+          label="الحالة"
+          value={status}
+          all="ALL"
+          onChange={setStatus}
+          options={[
+            { value: "ALL", label: "كل الحالات" },
+            { value: "ACTIVE", label: "مفعّل" },
+            { value: "OFF", label: "موقوف" },
+          ]}
+        />
+        <FilterSelect
+          label="المركز"
+          value={fCenter}
+          all="ALL"
+          onChange={setFCenter}
+          options={[{ value: "ALL" as const, label: "كل المراكز" }, ...db.centers.map((c) => ({ value: c.code, label: c.name }))]}
+        />
+        <FilterSelect
+          label="النوع"
+          value={kind}
+          all="ALL"
+          onChange={setKind}
+          options={[
+            { value: "ALL", label: "كل الأنواع" },
+            { value: "NORMAL", label: "مشاريع عادية" },
+            { value: "DOCTOR", label: "مشاريع طبيب" },
+            { value: "DEFER", label: "خدمة بدون بت" },
+          ]}
+        />
+        <ResetFilters show={filtering} onClick={clearFilters} />
+      </div>
+      <p className="mb-4 flex items-center gap-1.5 px-1 text-xs text-muted">
+        <Info className="size-3.5 shrink-0" />
+        {filtering
+          ? `عرض ${filtered.length} من ${list.length} مشروع · أزل الفلاتر لتغيير الترتيب بالسحب`
+          : "اسحب المشروع من المقبض لتغيير ترتيبه، أو استخدم الأسهم"}
+      </p>
+
       {/* بطاقات للجوال */}
+      <DndContext {...dndProps}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
       <div className="space-y-3 md:hidden">
-        {list.map((p, i) => (
-          <Card key={p.code} className={cn("p-4", !p.active && "bg-sunken/40")}>
+        {filtered.map((p) => {
+          const i = list.indexOf(p);
+          return (
+          <SortableCard key={p.code} id={p.code} disabled={lockDrag}>
+          {(h) => (
+          <Card className={cn("p-4", !p.active && "bg-sunken/40")}>
             <div className="flex items-start gap-2">
+              <DragHandle handle={h} name={p.name} disabled={lockDrag} className="size-10" />
               <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`, `${p.code}:color`)} />
               <div className="min-w-0 flex-1">
                 <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
@@ -170,15 +360,22 @@ export default function ProjectsPage() {
               </span>
             </div>
           </Card>
-        ))}
+          )}
+          </SortableCard>
+          );
+        })}
+        {!filtered.length && <EmptyFilter onClear={clearFilters} />}
       </div>
+      </SortableContext>
+      </DndContext>
 
+      <DndContext {...dndProps}>
       <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-sunken/70 text-xs text-muted">
               <tr>
-                <th className="w-20 px-4 py-3 text-start font-semibold">الترتيب</th>
+                <th className="w-44 px-4 py-3 text-start font-semibold">الترتيب</th>
                 <th className="px-3 py-3 text-start font-semibold">المشروع</th>
                 {db.centers.map((c) => (
                   <th key={c.code} className="px-3 py-3 text-center font-semibold">
@@ -190,11 +387,18 @@ export default function ProjectsPage() {
                 <th className="px-3 py-3 text-center font-semibold">مفعّل</th>
               </tr>
             </thead>
+            <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             <tbody className="divide-y divide-line/60">
-              {list.map((p, i) => (
-                <tr key={p.code} className={cn(!p.active && "bg-sunken/40")}>
+              {filtered.map((p) => {
+                const i = list.indexOf(p);
+                return (
+                <SortableTr key={p.code} id={p.code} disabled={lockDrag} className={cn(!p.active && "bg-sunken/40")}>
+                  {(h) => (
+                  <>
                   <td className="px-4 py-2.5">
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1">
+                      <span className="num w-5 text-center text-xs font-bold text-muted">{i + 1}</span>
+                      <DragHandle handle={h} name={p.name} disabled={lockDrag} className="size-9" />
                       <button
                         disabled={i === 0 || busy !== null}
                         onClick={() => move(p.code, -1)}
@@ -258,12 +462,24 @@ export default function ProjectsPage() {
                       label={`تفعيل ${p.name}`}
                     />
                   </td>
+                  </>
+                  )}
+                </SortableTr>
+                );
+              })}
+              {!filtered.length && (
+                <tr>
+                  <td colSpan={db.centers.length + 5}>
+                    <EmptyFilter onClear={clearFilters} />
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
+            </SortableContext>
           </table>
         </div>
       </Card>
+      </DndContext>
 
       <h2 className="mb-3 mt-10 text-lg font-bold">المراكز</h2>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -411,5 +627,16 @@ function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
         <FieldError>{err}</FieldError>
       </div>
     </Dialog>
+  );
+}
+
+function EmptyFilter({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="px-4 py-12 text-center text-sm text-muted">
+      لا توجد مشاريع مطابقة للفلاتر
+      <button onClick={onClear} className="mx-auto mt-2 block font-bold text-brand hover:underline">
+        مسح الفلاتر
+      </button>
+    </div>
   );
 }

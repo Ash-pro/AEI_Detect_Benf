@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { Award, CalendarRange, Clock3, Gauge, LayoutList, LineChart as LineIcon, Stethoscope, Store, UserPlus } from "lucide-react";
-import { Bar, CenterTabs, CoverageBar, ExportButton, FilterBar, HourChart, Legend, MonthSelect, PageHead, SectionHead, StatCard, coverage } from "@/components/admin/bits";
+import { Bar, CenterTabs, CoverageBar, ExportButton, FilterBar, FilterSelect, HourChart, Legend, MonthSelect, PageHead, SearchBox, SectionHead, Segmented, StatCard, TableToolbar, coverage } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
 import { type CenterFilter, dayStats, filterCenter, hourly, months, projectName, staffRanking, workedDays } from "@/lib/queries";
 import { projectColor } from "@/lib/project-colors";
-import { dayNum, hourLabel, monthLabel, todayKey } from "@/lib/utils";
+import { dayNum, hourLabel, monthLabel, normalizeArabicName, todayKey } from "@/lib/utils";
 
 const WEEK = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
@@ -17,6 +17,12 @@ export default function ReportsPage() {
   const monthList = useMemo(() => months(db), [db]);
   const [month, setMonth] = useState(todayKey().slice(0, 7));
   const [center, setCenter] = useState<CenterFilter>("ALL");
+  // فلاتر جدول المشاريع وترتيب الموظفين
+  const [pq, setPq] = useState("");
+  const [pSort, setPSort] = useState<"referred" | "served" | "low" | "high">("referred");
+  const [role, setRole] = useState<"ALL" | "RECEPTION" | "POINT">("ALL");
+  const [rq, setRq] = useState("");
+  const [topN, setTopN] = useState<"10" | "ALL">("10");
 
   const days = useMemo(() => workedDays(db, center, month).slice().reverse(), [db, center, month]);
   const stats = useMemo(() => days.map((d) => dayStats(db, d, center)), [db, days, center]);
@@ -42,7 +48,24 @@ export default function ReportsPage() {
     const fullRec = fullStats.reduce((n, s) => n + s.reception, 0);
     return { rec, nw, pt, projects, referred, served, avg: fullStats.length ? Math.round(fullRec / fullStats.length) : 0 };
   }, [stats, fullStats, db.projects]);
-  const ranking = useMemo(() => staffRanking(db, new Set(days), center).slice(0, 10), [db, days, center]);
+  const fullRanking = useMemo(() => staffRanking(db, new Set(days), center), [db, days, center]);
+  const ranking = useMemo(() => {
+    const term = normalizeArabicName(rq);
+    const list = fullRanking
+      .filter((r) => role === "ALL" || r.user!.role === role)
+      .filter((r) => !term || normalizeArabicName(r.user!.fullName).includes(term));
+    return topN === "10" ? list.slice(0, 10) : list;
+  }, [fullRanking, role, rq, topN]);
+  const projRows = useMemo(() => {
+    const term = normalizeArabicName(pq.toLowerCase());
+    const rate = (p: { served: number; referred: number }) => coverage(p.served, p.referred) ?? 999;
+    const list = totals.projects.filter((p) => !term || normalizeArabicName(p.name.toLowerCase()).includes(term) || p.code.toLowerCase().includes(term));
+    if (pSort === "referred") list.sort((a, b) => b.referred - a.referred);
+    if (pSort === "served") list.sort((a, b) => b.served - a.served);
+    if (pSort === "low") list.sort((a, b) => rate(a) - rate(b));
+    if (pSort === "high") list.sort((a, b) => rate(b) - rate(a));
+    return list;
+  }, [totals.projects, pq, pSort]);
   const monthEntries = useMemo(() => filterCenter(db.entries.filter((e) => e.date.startsWith(month)), center), [db, month, center]);
   const hours = useMemo(() => hourly(monthEntries), [monthEntries]);
   const hourSum = hours.reception.map((v, i) => v + hours.point[i]);
@@ -132,8 +155,23 @@ export default function ReportsPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card className="overflow-hidden">
           <SectionHead title="المشاريع خلال الشهر" icon={LayoutList} sub="موجّه من الاستقبال · مخدوم في النقطة · نسبة الخدمة" />
+          <TableToolbar>
+            <SearchBox value={pq} onChange={setPq} placeholder="بحث عن مشروع" />
+            <FilterSelect
+              label="الترتيب"
+              value={pSort}
+              all="referred"
+              onChange={setPSort}
+              options={[
+                { value: "referred", label: "الأكثر توجيهاً" },
+                { value: "served", label: "الأكثر خدمة" },
+                { value: "low", label: "الأقل نسبة خدمة" },
+                { value: "high", label: "الأعلى نسبة خدمة" },
+              ]}
+            />
+          </TableToolbar>
           <ul className="divide-y divide-line/60">
-            {totals.projects.map((p) => (
+            {projRows.map((p) => (
               <li key={p.code} className="space-y-2 px-4 py-3 sm:px-5">
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="flex items-center gap-2 font-bold">
@@ -147,12 +185,35 @@ export default function ReportsPage() {
                 <CoverageBar served={p.served} referred={p.referred} compact />
               </li>
             ))}
-            {!totals.projects.length && <li className="py-10 text-center text-sm text-muted">لا توجد بيانات</li>}
+            {!projRows.length && <li className="py-10 text-center text-sm text-muted">{totals.projects.length ? "لا توجد مشاريع مطابقة" : "لا توجد بيانات"}</li>}
           </ul>
         </Card>
 
         <Card className="overflow-hidden">
-          <SectionHead title="الموظفون الأكثر إدخالاً" icon={Award} />
+          <SectionHead title="الموظفون الأكثر إدخالاً" icon={Award} sub={`${fullRanking.length} موظف عملوا هذا الشهر`} />
+          <TableToolbar>
+            <SearchBox value={rq} onChange={setRq} placeholder="بحث باسم الموظف" />
+            <Segmented
+              label="نوع الحساب"
+              value={role}
+              onChange={setRole}
+              options={[
+                { value: "ALL", label: "الكل" },
+                { value: "RECEPTION", label: "استقبال" },
+                { value: "POINT", label: "نقاط" },
+              ]}
+            />
+            <FilterSelect
+              label="العدد"
+              value={topN}
+              all="10"
+              onChange={setTopN}
+              options={[
+                { value: "10", label: "أعلى 10" },
+                { value: "ALL", label: "كل الموظفين" },
+              ]}
+            />
+          </TableToolbar>
           <ul className="divide-y divide-line/60">
             {ranking.map((r, i) => (
               <li key={r.user!.id} className="grid grid-cols-[28px_minmax(0,1fr)_56px] items-center gap-3 px-4 py-2.5 sm:px-5">
@@ -169,7 +230,7 @@ export default function ReportsPage() {
                 <span className="num text-end font-bold">{r.count.toLocaleString("en-US")}</span>
               </li>
             ))}
-            {!ranking.length && <li className="py-10 text-center text-sm text-muted">لا توجد بيانات</li>}
+            {!ranking.length && <li className="py-10 text-center text-sm text-muted">{fullRanking.length ? "لا يوجد موظفون مطابقون" : "لا توجد بيانات"}</li>}
           </ul>
         </Card>
       </div>

@@ -35,7 +35,7 @@ const strip = (u: User): SessionUser => {
   return rest;
 };
 
-const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings", "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "saveProjectOptions"];
+const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "reorderProjects", "renameCenter", "saveSettings", "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "saveProjectOptions"];
 const LATENCY = 450;
 
 /** مثل قاعدة البيانات: تعديل توجيه الاستقبال لا يحذف تحويلات الطبيب التي أضافتها النقاط */
@@ -559,6 +559,14 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const reorderProjects = useCallback((codes: string[]) => {
+    setDb((d) => {
+      const byCode = new Map(d.projects.map((p) => [p.code, p]));
+      if (codes.length !== byCode.size || codes.some((c) => !byCode.has(c))) return d;
+      return { ...d, projects: codes.map((c, k) => ({ ...byCode.get(c)!, order: k + 1 })) };
+    });
+  }, []);
+
   const renameCenter = useCallback(
     (code: CenterCode, name: string) =>
       setDb((d) => log({ ...d, centers: d.centers.map((c) => (c.code === code ? { ...c, name: name.trim() || c.name } : c)) }, "تعديل مركز", name)),
@@ -611,12 +619,13 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       deleteUser: async (id) => (deleteUser(id), null),
       saveProject: async (p) => saveProject(p),
       moveProject: async (c, d) => moveProject(c, d),
+      reorderProjects: async (codes) => (reorderProjects(codes), null),
       renameCenter: async (c, n) => renameCenter(c, n),
       saveSettings: async (s) => (saveSettings(s), null),
     }, KEYS), KEYS),
     [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
       referToDoctor, cancelDoctorReferral, serveWithoutDonor, saveProjectOptions,
-      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings],
+      saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

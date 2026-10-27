@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Hourglass, Pencil, Search, Stethoscope, Store, UserPlus, X } from "lucide-react";
-import { CenterTabs, DateStepper, ExportButton, FilterBar, PageHead, Segmented, StatCard, StatStrip, coverage } from "@/components/admin/bits";
+import { CenterTabs, DateStepper, ExportButton, FilterBar, FilterSelect, PageHead, ResetFilters, Segmented, StatCard, StatStrip, coverage } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { EntryBadges, KindTag, ProjectChip } from "@/components/entry/history";
 import { projectColor, projectSoft } from "@/lib/project-colors";
@@ -31,11 +31,13 @@ function DayInner() {
   const [project, setProject] = useState(params.get("p") || "");
   const [kind, setKind] = useState<"ALL" | Entry["kind"]>("ALL");
   const [q, setQ] = useState("");
+  const [staff, setStaff] = useState("ALL");
+  const [isNew, setIsNew] = useState<"ALL" | "NEW" | "OLD">("ALL");
   const [shown, setShown] = useState(PAGE);
   const [edit, setEdit] = useState<Entry | null>(null);
 
   const go = (d: string) => router.replace(`${path}?d=${d}&c=${center}${project ? `&p=${project}` : ""}`, { scroll: false });
-  useEffect(() => setShown(PAGE), [date, center, project, kind, q]);
+  useEffect(() => setShown(PAGE), [date, center, project, kind, q, staff, isNew]);
 
   const days = useMemo(() => workedDays(db, center), [db, center]);
   const s = useMemo(() => dayStats(db, date, center), [db, date, center]);
@@ -46,9 +48,24 @@ function DayInner() {
     const term = normalizeArabicName(q);
     return byProject
       .filter((e) => kind === "ALL" || e.kind === kind)
+      .filter((e) => staff === "ALL" || e.userId === staff)
+      .filter((e) => isNew === "ALL" || (isNew === "NEW" ? e.isNew : !e.isNew))
       .filter((e) => !q.trim() || (digits ? e.nid.includes(digits) : normalizeArabicName(db.beneficiaries[e.nid]?.name ?? "").includes(term)))
       .sort((a, b) => b.at.localeCompare(a.at));
-  }, [db.beneficiaries, byProject, kind, q]);
+  }, [db.beneficiaries, byProject, kind, q, staff, isNew]);
+  // الموظفون الذين أدخلوا في هذا اليوم (للفلتر)
+  const staffList = useMemo(() => {
+    const ids = [...new Set(dayAll.map((e) => e.userId))];
+    return ids.map((id) => ({ value: id, label: userName(db, id) })).sort((a, b) => a.label.localeCompare(b.label, "ar"));
+  }, [dayAll, db]);
+  const filtering = Boolean(q.trim()) || kind !== "ALL" || Boolean(project) || staff !== "ALL" || isNew !== "ALL";
+  const clearFilters = () => {
+    setQ("");
+    setKind("ALL");
+    setProject("");
+    setStaff("ALL");
+    setIsNew("ALL");
+  };
   const waiting = s.projects.reduce((n, p) => n + p.waiting, 0);
   const referred = s.projects.reduce((n, p) => n + p.referred, 0);
   const served = s.projects.reduce((n, p) => n + p.served, 0);
@@ -132,7 +149,7 @@ function DayInner() {
 
       {/* overflow-clip بدل hidden حتى يبقى شريط البحث ثابتاً أثناء التمرير */}
       <Card className="mt-4 overflow-clip">
-        <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 border-b border-line bg-surface/95 p-3 backdrop-blur sm:gap-3 sm:p-4 lg:top-0">
+        <div className="z-20 flex flex-wrap items-center gap-2 border-b border-line bg-surface/95 p-3 backdrop-blur sm:gap-3 sm:p-4 md:sticky md:top-14 lg:top-0">
           <div className="relative min-w-[200px] flex-1">
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input
@@ -158,6 +175,19 @@ function DayInner() {
               { value: "POINT", label: "نقاط", count: byProject.filter((e) => e.kind === "POINT").length },
             ]}
           />
+          <FilterSelect label="الموظف" value={staff} all="ALL" onChange={setStaff} options={[{ value: "ALL", label: "كل الموظفين" }, ...staffList]} className="max-w-[180px]" />
+          <FilterSelect
+            label="الحالة"
+            value={isNew}
+            all="ALL"
+            onChange={setIsNew}
+            options={[
+              { value: "ALL", label: "جديدة ومتكررة" },
+              { value: "NEW", label: "جديدة فقط" },
+              { value: "OLD", label: "متكررة فقط" },
+            ]}
+          />
+          <ResetFilters show={filtering} onClick={clearFilters} />
         </div>
 
         {/* الجوال: بطاقة لكل إدخال */}
@@ -250,13 +280,9 @@ function DayInner() {
         {!list.length && (
           <div className="px-4 py-14 text-center text-sm text-muted">
             {dayAll.length ? "لا توجد إدخالات مطابقة" : "لا توجد إدخالات في هذا اليوم"}
-            {(q || kind !== "ALL" || project) && dayAll.length > 0 && (
+            {filtering && dayAll.length > 0 && (
               <button
-                onClick={() => {
-                  setQ("");
-                  setKind("ALL");
-                  setProject("");
-                }}
+                onClick={clearFilters}
                 className="mx-auto mt-2 block font-bold text-brand hover:underline"
               >
                 مسح الفلاتر

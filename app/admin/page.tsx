@@ -10,11 +10,17 @@ import {
   DateStepper,
   ExportButton,
   FilterBar,
+  FilterCount,
+  FilterSelect,
   HourChart,
   Legend,
   PageHead,
+  ResetFilters,
+  SearchBox,
   SectionHead,
+  Segmented,
   StatCard,
+  TableToolbar,
   coverage,
 } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
@@ -22,7 +28,7 @@ import { ShareDialog } from "@/components/entry/share-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { useStore } from "@/lib/store";
 import { adminShareText, type CenterFilter, dayStats, filterCenter, hourly, workedDays } from "@/lib/queries";
-import { dayFull, formatTime, hourLabel, todayKey, weekday } from "@/lib/utils";
+import { dayFull, formatTime, hourLabel, normalizeArabicName, todayKey, weekday } from "@/lib/utils";
 import { projectColor } from "@/lib/project-colors";
 import { overlapReport } from "@/lib/overlap";
 import { can } from "@/lib/permissions";
@@ -34,6 +40,11 @@ export default function AdminHome() {
   const [center, setCenter] = useState<CenterFilter>("ALL");
   const [share, setShare] = useState(false);
   const isToday = date === todayKey();
+  // فلاتر جدول المشاريع وآخر الإدخالات
+  const [pq, setPq] = useState("");
+  const [pShow, setPShow] = useState<"ALL" | "WAITING" | "LOW" | "ACTIVE">("ALL");
+  const [pSort, setPSort] = useState<"order" | "referred" | "served" | "waiting" | "low">("order");
+  const [lastKind, setLastKind] = useState<"ALL" | "RECEPTION" | "POINT">("ALL");
 
   const allDays = useMemo(() => workedDays(db, center), [db, center]);
   const s = useMemo(() => dayStats(db, date, center), [db, date, center]);
@@ -47,7 +58,7 @@ export default function AdminHome() {
       ).sort((a, b) => a.at.localeCompare(b.at)),
     [db, date, center],
   );
-  const latest = useMemo(() => dayList.slice(-8).reverse(), [dayList]);
+  const latest = useMemo(() => dayList.filter((e) => lastKind === "ALL" || e.kind === lastKind).slice(-8).reverse(), [dayList, lastKind]);
   const hours = useMemo(() => hourly(dayList), [dayList]);
 
   const rows = s.projects.filter((x) => db.projects.find((pp) => pp.code === x.code)?.active || x.referred || x.served);
@@ -57,6 +68,26 @@ export default function AdminHome() {
     waiting: 0,
   });
   const pct = coverage(totals.served, totals.referred);
+  const pFiltering = Boolean(pq.trim()) || pShow !== "ALL" || pSort !== "order";
+  const shown = useMemo(() => {
+    const term = normalizeArabicName(pq.toLowerCase());
+    const rate = (r: (typeof rows)[number]) => coverage(r.served, r.referred) ?? 999;
+    const list = rows
+      .filter((r) => !term || normalizeArabicName(r.name.toLowerCase()).includes(term) || r.code.toLowerCase().includes(term))
+      .filter((r) =>
+        pShow === "WAITING" ? r.waiting > 0 : pShow === "LOW" ? r.referred > 0 && rate(r) < 80 : pShow === "ACTIVE" ? r.referred > 0 || r.served > 0 : true,
+      );
+    if (pSort === "referred") list.sort((a, b) => b.referred - a.referred);
+    if (pSort === "served") list.sort((a, b) => b.served - a.served);
+    if (pSort === "waiting") list.sort((a, b) => b.waiting - a.waiting);
+    if (pSort === "low") list.sort((a, b) => rate(a) - rate(b));
+    return list;
+  }, [rows, pq, pShow, pSort]);
+  const shownTotals = shown.reduce((a, r) => ({ referred: a.referred + r.referred, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
+    referred: 0,
+    served: 0,
+    waiting: 0,
+  });
   const dupToday = useMemo(() => overlapReport(db, date, date, center, "day").rows.length, [db, date, center]);
   const busiest = [...rows].sort((a, b) => b.referred - a.referred)[0];
   const sum = hours.reception.map((v, i) => v + hours.point[i]);
@@ -112,9 +143,47 @@ export default function AdminHome() {
         <div className="min-w-0 space-y-6">
           <Card className="overflow-hidden">
             <SectionHead title="المشاريع" sub="اضغط على أي مشروع لعرض إدخالاته" icon={LayoutList} />
+            <TableToolbar>
+              <SearchBox value={pq} onChange={setPq} placeholder="بحث عن مشروع" />
+              <FilterSelect
+                label="عرض"
+                value={pShow}
+                all="ALL"
+                onChange={setPShow}
+                options={[
+                  { value: "ALL", label: "كل المشاريع" },
+                  { value: "ACTIVE", label: "عليها حركة اليوم" },
+                  { value: "WAITING", label: isToday ? "عليها انتظار" : "لم تُخدم كلها" },
+                  { value: "LOW", label: "نسبة خدمة أقل من 80%" },
+                ]}
+              />
+              <FilterSelect
+                label="الترتيب"
+                value={pSort}
+                all="order"
+                onChange={setPSort}
+                options={[
+                  { value: "order", label: "ترتيب المشاريع" },
+                  { value: "referred", label: "الأكثر توجيهاً" },
+                  { value: "served", label: "الأكثر خدمة" },
+                  { value: "waiting", label: isToday ? "الأكثر انتظاراً" : "الأكثر غير مخدوم" },
+                  { value: "low", label: "الأقل نسبة خدمة" },
+                ]}
+              />
+              <ResetFilters
+                show={pFiltering}
+                onClick={() => {
+                  setPq("");
+                  setPShow("ALL");
+                  setPSort("order");
+                }}
+              />
+            </TableToolbar>
+            <FilterCount shown={shown.length} total={rows.length} noun="مشروع" />
+            {!shown.length && <p className="px-4 py-10 text-center text-sm text-muted">لا توجد مشاريع مطابقة</p>}
             {/* الجوال: بطاقة لكل مشروع */}
             <ul className="divide-y divide-line/70 sm:hidden">
-              {rows.map((r) => (
+              {shown.map((r) => (
                 <li key={r.code}>
                   <Link href={href(r.code)} className="flex items-center gap-3 px-4 py-3 active:bg-sunken">
                     <span className="h-11 w-1.5 shrink-0 rounded-full" style={{ background: projectColor(db, r.code) }} />
@@ -151,7 +220,7 @@ export default function AdminHome() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/70">
-                  {rows.map((r) => (
+                  {shown.map((r) => (
                     <tr key={r.code} className="group cursor-pointer hover:bg-sunken/50" onClick={() => router.push(href(r.code))}>
                       <td className="px-5 py-3">
                         <Link href={href(r.code)} onClick={(e) => e.stopPropagation()} className="focus-ring inline-flex min-h-9 items-center gap-2 rounded-md font-bold group-hover:text-brand">
@@ -193,15 +262,15 @@ export default function AdminHome() {
                     </tr>
                   ))}
                 </tbody>
-                {rows.length > 1 && (
+                {shown.length > 1 && (
                   <tfoot className="border-t-2 border-line bg-sunken/50 font-bold">
                     <tr>
-                      <td className="px-5 py-3">الإجمالي</td>
-                      <td className="num px-3 py-3 text-center">{totals.referred}</td>
-                      <td className="num px-3 py-3 text-center text-ok">{totals.served}</td>
-                      <td className="num px-3 py-3 text-center text-warn">{totals.waiting}</td>
+                      <td className="px-5 py-3">{shown.length < rows.length ? "إجمالي المعروض" : "الإجمالي"}</td>
+                      <td className="num px-3 py-3 text-center">{shownTotals.referred}</td>
+                      <td className="num px-3 py-3 text-center text-ok">{shownTotals.served}</td>
+                      <td className="num px-3 py-3 text-center text-warn">{shownTotals.waiting}</td>
                       <td className="px-3 py-3">
-                        <CoverageBar served={totals.served} referred={totals.referred} />
+                        <CoverageBar served={shownTotals.served} referred={shownTotals.referred} />
                       </td>
                       <td />
                     </tr>
@@ -263,6 +332,19 @@ export default function AdminHome() {
           <Card className="overflow-hidden">
             <SectionHead
               title="آخر الإدخالات"
+              sub={
+                <Segmented
+                  label="نوع الإدخال"
+                  value={lastKind}
+                  onChange={setLastKind}
+                  className="mt-1.5"
+                  options={[
+                    { value: "ALL", label: "الكل" },
+                    { value: "RECEPTION", label: "استقبال" },
+                    { value: "POINT", label: "نقاط" },
+                  ]}
+                />
+              }
               actions={
                 <Link
                   href={href()}

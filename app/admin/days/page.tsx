@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarCheck2, ChevronLeft, Stethoscope, Store, TrendingUp } from "lucide-react";
-import { CenterTabs, CoverageBar, ExportButton, FilterBar, MonthSelect, PageHead, Segmented, StatCard } from "@/components/admin/bits";
+import { CenterTabs, CoverageBar, ExportButton, FilterBar, FilterCount, FilterSelect, MonthSelect, PageHead, ResetFilters, Segmented, StatCard, TableToolbar, coverage } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
 import { activeProjects, allProjects, type CenterFilter, dayStats, months, workedDays } from "@/lib/queries";
@@ -20,27 +20,45 @@ export default function DaysPage() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const [center, setCenter] = useState<CenterFilter>("ALL");
   const [mode, setMode] = useState<"served" | "referred">("served");
+  // فلاتر الجدول
+  const [wd, setWd] = useState("ALL");
+  const [proj, setProj] = useState("ALL");
+  const [sort, setSort] = useState<"new" | "old" | "rec" | "low">("new");
 
   const days = useMemo(() => workedDays(db, center, month), [db, center, month]);
   const stats = useMemo(() => days.map((d) => dayStats(db, d, center)), [db, days, center]);
-  const projects = useMemo(() => {
+  const allCols = useMemo(() => {
     const used = new Set(stats.flatMap((s) => s.projects.filter((p) => p.referred || p.served).map((p) => p.code)));
     const act = new Set(activeProjects(db).map((p) => p.code));
     return allProjects(db).filter((p) => act.has(p.code) || used.has(p.code));
   }, [db, stats]);
+  const projects = proj === "ALL" ? allCols : allCols.filter((p) => p.code === proj);
 
   const val = (s: (typeof stats)[number], code: string) => {
     const r = s.projects.find((p) => p.code === code)!;
     return mode === "served" ? r.served : r.referred;
   };
-  const sumP = (s: (typeof stats)[number], k: "served" | "referred") => s.projects.reduce((n, p) => n + p[k], 0);
-  const totals = projects.map((p) => stats.reduce((n, s) => n + val(s, p.code), 0));
+  const sumP = (s: (typeof stats)[number], k: "served" | "referred") =>
+    s.projects.filter((p) => proj === "ALL" || p.code === proj).reduce((n, p) => n + p[k], 0);
+  /* الصفوف بعد الفلترة والترتيب (البطاقات العلوية تبقى على الشهر كاملاً) */
+  const rows = useMemo(() => {
+    const rate = (s: (typeof stats)[number]) => coverage(sumP(s, "served"), sumP(s, "referred")) ?? 999;
+    const list = stats.filter((s) => wd === "ALL" || String(new Date(`${s.date}T12:00:00Z`).getUTCDay()) === wd);
+    if (sort === "new") list.sort((a, b) => b.date.localeCompare(a.date));
+    if (sort === "old") list.sort((a, b) => a.date.localeCompare(b.date));
+    if (sort === "rec") list.sort((a, b) => b.reception - a.reception);
+    if (sort === "low") list.sort((a, b) => rate(a) - rate(b));
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats, wd, sort, proj]);
+  const filtering = wd !== "ALL" || proj !== "ALL" || sort !== "new";
+  const totals = projects.map((p) => rows.reduce((n, s) => n + val(s, p.code), 0));
   const recTotal = stats.reduce((n, s) => n + s.reception, 0);
   const ptTotal = stats.reduce((n, s) => n + s.point, 0);
   const full = stats.filter((s) => s.date !== today);
   const avg = full.length ? Math.round(full.reduce((n, s) => n + s.reception, 0) / full.length) : 0;
   const best = [...stats].sort((a, b) => b.reception - a.reception)[0];
-  const max = Math.max(1, ...stats.flatMap((s) => projects.map((p) => val(s, p.code))));
+  const max = Math.max(1, ...rows.flatMap((s) => projects.map((p) => val(s, p.code))));
   const open = (d: string) => router.push(`/admin/day?d=${d}&c=${center}`);
 
   return (
@@ -86,9 +104,41 @@ export default function DaysPage() {
           />
         </div>
 
+        <TableToolbar>
+          <FilterSelect
+            label="يوم الأسبوع"
+            value={wd}
+            all="ALL"
+            onChange={setWd}
+            options={[{ value: "ALL", label: "كل أيام الأسبوع" }, ...["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "السبت"].map((d) => ({ value: String(["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"].indexOf(d)), label: d }))]}
+          />
+          <FilterSelect label="المشروع" value={proj} all="ALL" onChange={setProj} options={[{ value: "ALL", label: "كل المشاريع" }, ...allCols.map((p) => ({ value: p.code, label: p.name }))]} className="max-w-[200px]" />
+          <FilterSelect
+            label="الترتيب"
+            value={sort}
+            all="new"
+            onChange={setSort}
+            options={[
+              { value: "new", label: "الأحدث أولاً" },
+              { value: "old", label: "الأقدم أولاً" },
+              { value: "rec", label: "الأعلى استقبالاً" },
+              { value: "low", label: "الأقل نسبة خدمة" },
+            ]}
+          />
+          <ResetFilters
+            show={filtering}
+            onClick={() => {
+              setWd("ALL");
+              setProj("ALL");
+              setSort("new");
+            }}
+          />
+        </TableToolbar>
+        <FilterCount shown={rows.length} total={stats.length} noun="يوم" />
+
         {/* الجوال: قائمة أيام */}
         <ul className="divide-y divide-line/60 md:hidden">
-          {stats.map((s) => (
+          {rows.map((s) => (
             <li key={s.date}>
               <Link href={`/admin/day?d=${s.date}&c=${center}`} className="flex items-center gap-3 px-4 py-3 active:bg-sunken">
                 <span className={cn("grid size-12 shrink-0 place-items-center rounded-xl text-center leading-tight", s.date === today ? "bg-brand text-brand-ink" : "bg-sunken")}>
@@ -112,7 +162,7 @@ export default function DaysPage() {
               </Link>
             </li>
           ))}
-          {!stats.length && <li className="px-4 py-12 text-center text-sm text-muted">لا توجد أيام عمل في هذا الشهر</li>}
+          {!rows.length && <li className="px-4 py-12 text-center text-sm text-muted">{stats.length ? "لا توجد أيام مطابقة للفلاتر" : "لا توجد أيام عمل في هذا الشهر"}</li>}
         </ul>
 
         {/* الشاشات الأكبر: جدول حراري */}
@@ -134,7 +184,7 @@ export default function DaysPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line/70">
-              {stats.map((s) => (
+              {rows.map((s) => (
                 <tr
                   key={s.date}
                   tabIndex={0}
@@ -167,26 +217,26 @@ export default function DaysPage() {
                   </td>
                 </tr>
               ))}
-              {!stats.length && (
+              {!rows.length && (
                 <tr>
                   <td colSpan={projects.length + 3} className="px-4 py-12 text-center text-muted">
-                    لا توجد أيام عمل في هذا الشهر
+                    {stats.length ? "لا توجد أيام مطابقة للفلاتر" : "لا توجد أيام عمل في هذا الشهر"}
                   </td>
                 </tr>
               )}
             </tbody>
-            {stats.length > 0 && (
+            {rows.length > 0 && (
               <tfoot className="border-t-2 border-line bg-sunken/60 font-bold">
                 <tr>
-                  <td className="sticky start-0 bg-sunken px-4 py-3">إجمالي الشهر</td>
-                  <td className="num px-3 py-3 text-center text-brand">{recTotal}</td>
+                  <td className="sticky start-0 bg-sunken px-4 py-3">{rows.length < stats.length ? "إجمالي المعروض" : "إجمالي الشهر"}</td>
+                  <td className="num px-3 py-3 text-center text-brand">{rows.reduce((n, s) => n + s.reception, 0)}</td>
                   {totals.map((t, i) => (
                     <td key={projects[i].code} className="num px-2 py-3 text-center">
                       {t}
                     </td>
                   ))}
                   <td className="px-3 py-3">
-                    <CoverageBar served={stats.reduce((n, s) => n + sumP(s, "served"), 0)} referred={stats.reduce((n, s) => n + sumP(s, "referred"), 0)} />
+                    <CoverageBar served={rows.reduce((n, s) => n + sumP(s, "served"), 0)} referred={rows.reduce((n, s) => n + sumP(s, "referred"), 0)} />
                   </td>
                 </tr>
               </tfoot>

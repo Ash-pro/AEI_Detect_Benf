@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, FileSpreadsheet, type LucideIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FilterX, Search, X, type LucideIcon } from "lucide-react";
 import type { CenterFilter } from "@/lib/queries";
 import { useStore } from "@/lib/store";
 import { can } from "@/lib/permissions";
@@ -223,7 +223,7 @@ export function SectionHead({ title, sub, icon: Icon, actions }: { title: string
         {Icon && <Icon className="size-5 shrink-0 text-muted" />}
         <div className="min-w-0">
           <h2 className="text-base font-bold sm:text-lg">{title}</h2>
-          {sub && <p className="text-xs text-muted">{sub}</p>}
+          {sub && <div className="text-xs text-muted">{sub}</div>}
         </div>
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -332,6 +332,107 @@ export function Legend({ items }: { items: { label: string; cls: string }[] }) {
           {i.label}
         </span>
       ))}
+    </div>
+  );
+}
+
+/* ================= أدوات فلترة الجداول ================= */
+
+/** شريط أدوات فوق الجدول: بحث وفلاتر وترتيب */
+export function TableToolbar({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("flex flex-wrap items-center gap-2 border-b border-line p-3 sm:p-4", className)}>{children}</div>;
+}
+
+export function SearchBox({
+  value,
+  onChange,
+  placeholder = "بحث",
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("relative min-w-[180px] flex-1", className)}>
+      <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+      <input
+        aria-label={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-10 w-full rounded-xl border border-line bg-surface ps-9 pe-9 text-sm outline-hidden focus:border-brand"
+      />
+      {value && (
+        <button
+          onClick={() => onChange("")}
+          aria-label="مسح البحث"
+          className="absolute end-1 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-sunken"
+        >
+          <X className="size-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** قائمة اختيار للفلترة — تتلوّن عندما تكون مفعّلة */
+export function FilterSelect<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+  all,
+  className,
+}: {
+  label: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+  /** قيمة "الكل" — عند اختيار غيرها يظهر الفلتر مفعّلاً */
+  all?: T;
+  className?: string;
+}) {
+  const on = all !== undefined && value !== all;
+  return (
+    <select
+      aria-label={label}
+      title={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value as T)}
+      className={cn(
+        "focus-ring h-10 max-w-full rounded-xl border px-3 text-sm font-semibold",
+        on ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface",
+        className,
+      )}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** زر مسح كل الفلاتر — يظهر فقط عند وجود فلتر مفعّل */
+export function ResetFilters({ show, onClick }: { show: boolean; onClick: () => void }) {
+  if (!show) return null;
+  return (
+    <button onClick={onClick} className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-bad hover:bg-bad-soft">
+      <FilterX className="size-4" />
+      مسح الفلاتر
+    </button>
+  );
+}
+
+/** سطر "عرض X من Y" تحت الجدول عند الفلترة */
+export function FilterCount({ shown, total, noun = "" }: { shown: number; total: number; noun?: string }) {
+  if (shown === total) return null;
+  return (
+    <div className="num border-b border-line bg-brand-soft/40 px-4 py-2 text-xs font-semibold text-brand sm:px-5">
+      عرض {shown} من {total} {noun}
     </div>
   );
 }

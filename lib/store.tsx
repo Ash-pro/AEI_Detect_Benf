@@ -88,6 +88,8 @@ export interface Ctx {
   deleteUser: (id: string) => Promise<string | null>;
   saveProject: (p: Project) => Promise<string | null>;
   moveProject: (code: string, dir: -1 | 1) => Promise<void>;
+  /** ترتيب كامل للمشاريع (السحب والإفلات) — يُعيد رسالة خطأ أو null */
+  reorderProjects: (codes: string[]) => Promise<string | null>;
   renameCenter: (code: CenterCode, name: string) => Promise<void>;
   saveSettings: (s: Settings) => Promise<string | null>;
   saveProjectOptions: (code: string, o: { isDoctor: boolean; deferCenters: CenterCode[]; deferDays: number }) => Promise<string | null>;
@@ -619,6 +621,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [rpc, reloadRefs],
   );
 
+  const reorderProjects = useCallback(
+    async (codes: string[]) => {
+      const byCode = new Map(dbRef.current.projects.map((p) => [p.code, p]));
+      if (codes.length !== byCode.size || codes.some((c) => !byCode.has(c))) return "ترتيب غير صالح، حدّث الصفحة وأعد المحاولة";
+      // عرض فوري ثم حفظ، وعند الخطأ نرجع لترتيب قاعدة البيانات
+      setDb((d) => ({ ...d, projects: codes.map((c, k) => ({ ...byCode.get(c)!, order: k + 1 })) }));
+      const r = await rpc("reorder_projects", { p_codes: codes });
+      await reloadRefs();
+      return r.error ?? null;
+    },
+    [rpc, reloadRefs],
+  );
+
   const renameCenter = useCallback(
     async (code: CenterCode, name: string) => {
       await rpc("rename_center", { p_code: code, p_name: name });
@@ -660,15 +675,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
           addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
           referToDoctor, cancelDoctorReferral, serveWithoutDonor,
-          saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, saveProjectOptions,
+          saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, saveProjectOptions,
         },
         ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry",
           "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor",
-          "saveUser", "deleteUser", "saveProject", "moveProject", "renameCenter", "saveSettings", "saveProjectOptions"],
+          "saveUser", "deleteUser", "saveProject", "moveProject", "reorderProjects", "renameCenter", "saveSettings", "saveProjectOptions"],
       ),
     [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
       referToDoctor, cancelDoctorReferral, serveWithoutDonor,
-      saveUser, deleteUser, saveProject, moveProject, renameCenter, saveSettings, saveProjectOptions],
+      saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, saveProjectOptions],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

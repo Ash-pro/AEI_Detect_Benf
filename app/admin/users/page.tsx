@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Plus, Power, Search, ShieldCheck, UserRound } from "lucide-react";
 import { PERMS } from "@/lib/permissions";
 import { RowMenu } from "@/components/admin/row-menu";
-import { PageHead, Segmented } from "@/components/admin/bits";
+import { FilterSelect, PageHead, ResetFilters, Segmented } from "@/components/admin/bits";
 import {
   DeleteUserDialog,
   ResetPasswordDialog,
@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { canManageUser, isStaff } from "@/lib/roles";
-import { centerName, lastActivity, projectName } from "@/lib/queries";
+import { allProjects, centerName, lastActivity, projectName } from "@/lib/queries";
 import type { CenterCode, Role, User } from "@/lib/types";
 import { cn, formatTime, normalizeArabicName, sinceText, todayKey } from "@/lib/utils";
 
@@ -36,6 +36,8 @@ export default function UsersPage() {
   const [role, setRole] = useState<RoleFilter>("ALL");
   const [center, setCenter] = useState<CenterCode | "ALL">("ALL");
   const [status, setStatus] = useState<StatusFilter>("ALL");
+  const [proj, setProj] = useState("ALL");
+  const [sort, setSort] = useState<"role" | "today" | "name" | "last">("role");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
@@ -61,6 +63,7 @@ export default function UsersPage() {
       .filter((u) => role === "ALL" || u.role === role)
       .filter((u) => center === "ALL" || u.centers.includes(center))
       .filter((u) => status === "ALL" || (status === "ACTIVE" ? u.active : !u.active))
+      .filter((u) => proj === "ALL" || u.projects.includes(proj))
       .filter(
         (u) =>
           !term ||
@@ -68,8 +71,25 @@ export default function UsersPage() {
           u.username.includes(term) ||
           u.projects.some((p) => projectName(db, p).toLowerCase().includes(term)),
       )
-      .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || Number(b.active) - Number(a.active) || a.fullName.localeCompare(b.fullName, "ar"));
-  }, [db, visibleUsers, q, role, center, status]);
+      .sort((a, b) =>
+        sort === "today"
+          ? (todayCounts.get(b.id) ?? 0) - (todayCounts.get(a.id) ?? 0)
+          : sort === "name"
+            ? a.fullName.localeCompare(b.fullName, "ar")
+            : sort === "last"
+              ? (lastActivity(db, b.id) ?? "").localeCompare(lastActivity(db, a.id) ?? "")
+              : ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || Number(b.active) - Number(a.active) || a.fullName.localeCompare(b.fullName, "ar"),
+      );
+  }, [db, visibleUsers, q, role, center, status, proj, sort, todayCounts]);
+  const filtering = Boolean(q.trim()) || role !== "ALL" || center !== "ALL" || status !== "ALL" || proj !== "ALL" || sort !== "role";
+  const clearFilters = () => {
+    setQ("");
+    setRole("ALL");
+    setCenter("ALL");
+    setStatus("ALL");
+    setProj("ALL");
+    setSort("role");
+  };
 
   const counts = {
     all: visibleUsers.length,
@@ -192,6 +212,21 @@ export default function UsersPage() {
             <option value="ACTIVE">مفعّل</option>
             <option value="OFF">موقوف</option>
           </select>
+          <FilterSelect label="المشروع" value={proj} all="ALL" onChange={setProj} options={[{ value: "ALL", label: "كل المشاريع" }, ...allProjects(db).map((p) => ({ value: p.code, label: p.name }))]} className="max-w-[180px]" />
+          <FilterSelect
+            label="الترتيب"
+            value={sort}
+            all="role"
+            onChange={setSort}
+            options={[
+              { value: "role", label: "حسب النوع" },
+              { value: "today", label: "الأكثر إدخالاً اليوم" },
+              { value: "last", label: "آخر نشاط" },
+              { value: "name", label: "الاسم (أ-ي)" },
+            ]}
+          />
+          <ResetFilters show={filtering} onClick={clearFilters} />
+          {filtering && <span className="num text-xs font-semibold text-brand">{users.length} من {visibleUsers.length}</span>}
         </div>
 
         {/* جدول للشاشات العريضة */}
