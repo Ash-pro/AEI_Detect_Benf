@@ -6,6 +6,9 @@ import { useStore } from "@/lib/store";
 import { can } from "@/lib/permissions";
 import { useToast } from "@/components/ui/toast";
 import { addDays, cn, hourLabel, monthLabel, todayKey } from "@/lib/utils";
+import { DateField } from "@/components/ui/date-field";
+
+export { DateField };
 
 export function PageHead({
   title,
@@ -99,16 +102,7 @@ export function DateStepper({ value, onChange, days }: { value: string; onChange
       <button onClick={() => prev && onChange(prev)} disabled={!prev} aria-label="اليوم السابق" title="اليوم السابق" className={btn}>
         <ChevronRight className="size-5" />
       </button>
-      <input
-        type="date"
-        lang="en-GB"
-        aria-label="اليوم"
-        dir="ltr"
-        max={today}
-        value={value}
-        onChange={(e) => e.target.value && onChange(e.target.value)}
-        className="num h-10 rounded-lg border-0 bg-surface px-2.5 text-sm font-bold shadow-sm outline-hidden"
-      />
+      <DateField label="اليوم" value={value} max={today} onChange={onChange} className="h-10 bg-surface shadow-sm" />
       <button onClick={() => next && onChange(next)} disabled={!next} aria-label="اليوم التالي" title="اليوم التالي" className={btn}>
         <ChevronLeft className="size-5" />
       </button>
@@ -168,9 +162,9 @@ export function StatCard({
   return (
     <div className="flex min-w-0 flex-col rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
       <div className="flex items-start justify-between gap-2">
-        <div className="truncate text-[13px] font-semibold text-muted sm:text-sm">{label}</div>
+        <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-muted sm:text-sm" title={label}>{label}</div>
         {Icon && (
-          <span className={cn("hidden size-9 shrink-0 place-items-center rounded-xl sm:grid", t.tile)} aria-hidden>
+          <span className={cn("hidden size-9 shrink-0 place-items-center rounded-xl xl:grid", t.tile)} aria-hidden>
             <Icon className="size-[18px]" />
           </span>
         )}
@@ -195,6 +189,29 @@ export function StatCard({
           <span className="block truncate text-muted">{hint}</span>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** مؤشرات مضغوطة في صف واحد للجوال — بديل لبطاقات StatCard حتى لا تدفع القائمة للأسفل */
+export function StatStrip({
+  items,
+  className,
+}: {
+  items: { label: string; value: number | string; tone?: keyof typeof TONES; hint?: string }[];
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-1.5 rounded-2xl border border-line bg-surface p-1.5 shadow-card", className)} style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+      {items.map((i) => (
+        <div key={i.label} className="min-w-0 rounded-xl bg-sunken/60 px-2 py-2 text-center">
+          <div className={cn("num text-xl font-bold leading-tight", TONES[i.tone ?? "ink"].text)}>
+            {typeof i.value === "number" ? i.value.toLocaleString("en-US") : i.value}
+          </div>
+          <div className="mt-0.5 text-xs font-semibold leading-tight text-muted">{i.label}</div>
+          {i.hint && <div className="num mt-0.5 truncate text-xs text-muted/80">{i.hint}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -249,14 +266,25 @@ export function coverage(served: number, referred: number): number | null {
 
 export function CoverageBar({ served, referred, compact }: { served: number; referred: number; compact?: boolean }) {
   const pct = coverage(served, referred);
-  const tone = pct === null ? "text-muted" : pct >= 80 ? "text-ok" : pct >= 50 ? "text-warn" : "text-bad";
-  const bg = pct === null ? "" : pct >= 80 ? "bg-ok" : pct >= 50 ? "bg-warn" : "bg-bad";
+  // أكثر من 100%: النقطة خدمت حالات لم تمر على الاستقبال — تُعرض كتنبيه لا كإنجاز
+  const over = pct !== null && pct > 100;
+  const tone = pct === null ? "text-muted" : over ? "text-info" : pct >= 80 ? "text-ok" : pct >= 50 ? "text-warn" : "text-bad";
+  const bg = pct === null ? "" : over ? "bg-info" : pct >= 80 ? "bg-ok" : pct >= 50 ? "bg-warn" : "bg-bad";
   return (
-    <div className={cn("flex items-center gap-2.5", compact ? "w-full" : "min-w-[140px]")} title="نسبة الخدمة: المخدوم في النقطة من الموجّه من الاستقبال">
+    <div
+      className={cn("flex items-center gap-2.5", compact ? "w-full" : "min-w-[140px]")}
+      title={
+        over
+          ? `خدمت النقطة ${served} حالة مقابل ${referred} محوّلة من الاستقبال — الفرق حالات خُدمت دون المرور على الاستقبال`
+          : "نسبة الخدمة: المخدوم في النقطة من الموجّه من الاستقبال"
+      }
+    >
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-sunken">
-        {pct !== null && <div className={cn("h-full rounded-full", bg)} style={{ width: `${Math.min(pct, 100)}%` }} />}
+        {pct !== null && <div className={cn("h-full rounded-full", bg, over && "bg-[repeating-linear-gradient(135deg,var(--color-info)_0_6px,color-mix(in_srgb,var(--color-info)_60%,white)_6px_12px)]")} style={{ width: `${Math.min(pct, 100)}%` }} />}
       </div>
-      <span className={cn("num w-11 shrink-0 text-end text-sm font-bold", tone)}>{pct === null ? "—" : `${pct}%`}</span>
+      <span className={cn("num inline-flex w-12 shrink-0 items-center justify-end gap-0.5 text-end text-sm font-bold", tone)}>
+        {pct === null ? "—" : `${pct}%`}
+      </span>
     </div>
   );
 }
@@ -276,7 +304,7 @@ export function HourChart({ reception, point, height = 150 }: { reception: numbe
       <div className="flex items-end gap-1 sm:gap-1.5" style={{ height }} dir="ltr">
         {hours.map((h) => (
           <div key={h} className="group relative flex h-full flex-1 flex-col justify-end" title={`${hourLabel(h)}: استقبال ${reception[h]} · نقاط ${point[h]}`}>
-            <span className={cn("num mb-1 text-center text-[10px] font-bold", h === peak ? "text-ink" : "text-transparent group-hover:text-muted")}>{total[h]}</span>
+            <span className={cn("num mb-1 text-center text-[11px] font-bold", h === peak ? "text-ink" : "text-transparent group-hover:text-muted")}>{total[h]}</span>
             <div className="flex flex-col overflow-hidden rounded-t-md" style={{ height: `${(total[h] / max) * 100}%`, minHeight: total[h] ? 3 : 0 }}>
               <div className="bg-ok" style={{ flex: point[h] }} />
               <div className="bg-brand" style={{ flex: reception[h] }} />
@@ -286,7 +314,7 @@ export function HourChart({ reception, point, height = 150 }: { reception: numbe
       </div>
       <div className="mt-1.5 flex gap-1 border-t border-line pt-1.5 sm:gap-1.5" dir="ltr">
         {hours.map((h, i) => (
-          <span key={h} dir="rtl" className={cn("num flex-1 whitespace-nowrap text-center text-[10px] text-muted", i % (hours.length > 10 ? 2 : 1) && "invisible")}>
+          <span key={h} dir="rtl" className={cn("num flex-1 whitespace-nowrap text-center text-[11px] text-muted", i % (hours.length > 10 ? 2 : 1) && "invisible")}>
             {hourLabel(h)}
           </span>
         ))}

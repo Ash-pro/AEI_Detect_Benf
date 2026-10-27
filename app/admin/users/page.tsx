@@ -2,7 +2,7 @@
 
 import { useBusy } from "@/lib/use-busy";
 import { useMemo, useState } from "react";
-import { Plus, Search, ShieldCheck, UserRound } from "lucide-react";
+import { Plus, Power, Search, ShieldCheck, UserRound } from "lucide-react";
 import { PERMS } from "@/lib/permissions";
 import { RowMenu } from "@/components/admin/row-menu";
 import { PageHead, Segmented } from "@/components/admin/bits";
@@ -15,6 +15,7 @@ import {
 } from "@/components/admin/user-dialogs";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
@@ -80,11 +81,14 @@ export default function UsersPage() {
   };
 
   const { busy, run } = useBusy();
-  function toggleActive(u: User) {
+  // إيقاف الحساب يحتاج تأكيداً حتى لا يُوقف بالخطأ أثناء التمرير
+  const [stopping, setStopping] = useState<User | null>(null);
+  function toggleActive(u: User, confirmed = false) {
     if (!canManageUser(me?.role, u.role)) return toast("لا تملك صلاحية تعديل هذا الحساب", "bad");
     if (u.id === me?.id) return toast("لا يمكنك إيقاف حسابك أنت", "bad");
     if (u.role === "ADMIN" && u.active && db.users.filter((x) => x.role === "ADMIN" && x.active).length <= 1)
       return toast("لا يمكن إيقاف آخر حساب أدمن مفعّل", "bad");
+    if (u.active && !confirmed) return setStopping(u);
     void run(u.id, async () => {
       const e = await saveUser({ ...u, active: !u.active });
       toast(e ?? (u.active ? `تم إيقاف حساب ${u.fullName}` : `تم تفعيل حساب ${u.fullName}`), e ? "bad" : "ok");
@@ -211,7 +215,7 @@ export default function UsersPage() {
                 return (
                   <tr key={u.id} className={cn("hover:bg-sunken/40", !u.active && "opacity-60")}>
                     <td className="px-5 py-3">
-                      <button onClick={() => setViewing(u)} className="flex items-center gap-3 text-start">
+                      <button onClick={() => setViewing(u)} className="focus-ring flex min-h-11 items-center gap-3 rounded-lg text-start">
                         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sunken font-bold text-muted">{u.fullName.trim()[0]}</span>
                         <span>
                           <span className="block font-bold hover:text-brand">
@@ -223,7 +227,10 @@ export default function UsersPage() {
                       </button>
                     </td>
                     <td className="px-3 py-3">
-                      <RoleBadge role={u.role} />
+                      <div className="flex flex-wrap items-center gap-1">
+                        <RoleBadge role={u.role} />
+                        {!u.active && <OffBadge />}
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-xs font-semibold">
                       {!isStaff(u.role) ? <span className="text-muted">الكل</span> : u.centers.map((c) => centerName(db, c, true)).join("، ")}
@@ -284,12 +291,14 @@ export default function UsersPage() {
                 {u.fullName.trim()[0]}
               </button>
               <div className="min-w-0 flex-1">
-                <button onClick={() => setViewing(u)} className="block min-h-8 text-start font-bold">
+                <button onClick={() => setViewing(u)} className="focus-ring block min-h-10 rounded-lg text-start font-bold">
                   {u.fullName}
+                  {u.id === me?.id && <span className="ms-1.5 text-xs font-semibold text-muted">(أنت)</span>}
                 </button>
                 <div className="ltr text-start text-xs text-muted">{u.username}</div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <RoleBadge role={u.role} />
+                  {!u.active && <OffBadge />}
                   {isStaff(u.role) && <span className="text-xs font-semibold text-muted">{u.centers.map((c) => centerName(db, c, true)).join("، ")}</span>}
                   {u.role === "SUPERVISOR" && <PermsButton u={u} editable={me?.role === "ADMIN"} onEdit={() => openEdit(u)} />}
                   {u.projects.map((p) => (
@@ -302,8 +311,8 @@ export default function UsersPage() {
                   اليوم: <span className="num font-bold text-ink">{todayCounts.get(u.id) ?? 0}</span> إدخال
                 </div>
               </div>
+              {/* الجوال: الإيقاف والتفعيل من قائمة الخيارات (مع تأكيد) بدل مفتاح سهل اللمس بالخطأ */}
               <div className="flex flex-col items-end gap-2">
-                <Switch checked={u.active} disabled={!can(u)} loading={busy === u.id} onChange={() => toggleActive(u)} label={`تفعيل ${u.fullName}`} />
                 <RowMenu
                   onView={() => setViewing(u)}
                   onEdit={() => openEdit(u)}
@@ -328,12 +337,46 @@ export default function UsersPage() {
         )}
       </Card>
 
+      <Dialog
+        open={Boolean(stopping)}
+        onClose={() => setStopping(null)}
+        title="إيقاف الحساب؟"
+        description={stopping ? `${stopping.fullName} · ${stopping.username}` : ""}
+        footer={
+          <>
+            <Button
+              variant="danger"
+              size="lg"
+              onClick={() => {
+                const u = stopping;
+                setStopping(null);
+                if (u) toggleActive(u, true);
+              }}
+            >
+              <Power className="size-5" />
+              نعم، أوقف الحساب
+            </Button>
+            <Button variant="secondary" size="lg" onClick={() => setStopping(null)}>
+              تراجع
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm leading-relaxed text-muted">
+          لن يتمكن من تسجيل الدخول حتى تعيد تفعيله. إدخالاته السابقة تبقى كما هي.
+        </p>
+      </Dialog>
+
       <UserFormDialog open={formOpen} user={editing} onClose={() => setFormOpen(false)} />
       <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />
       <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />
       <UserDetailDialog user={viewing} onClose={() => setViewing(null)} onEdit={viewing && can(viewing) ? openEdit : undefined} />
     </>
   );
+}
+
+function OffBadge() {
+  return <span className="rounded-md bg-bad-soft px-1.5 py-0.5 text-xs font-bold text-bad">موقوف</span>;
 }
 
 /** عدد صلاحيات المشرف — والضغط عليه يفتح تعديلها */
@@ -350,7 +393,7 @@ function PermsButton({ u, editable, onEdit }: { u: User; editable: boolean; onEd
     n ? "bg-brand-soft text-brand" : "bg-warn-soft text-warn",
   );
   return editable ? (
-    <button onClick={onEdit} className={cn(cls, "min-h-7 hover:ring-2 hover:ring-brand/30")} title={PERMS.filter((p) => u.permissions.includes(p.key)).map((p) => p.label).join("، ")}>
+    <button onClick={onEdit} className={cn(cls, "focus-ring min-h-9 px-2 hover:ring-2 hover:ring-brand/30")} title={PERMS.filter((p) => u.permissions.includes(p.key)).map((p) => p.label).join("، ")}>
       {body}
       <span className="font-semibold opacity-70">· تعديل</span>
     </button>

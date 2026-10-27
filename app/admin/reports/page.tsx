@@ -160,7 +160,7 @@ export default function ReportsPage() {
                 <span className="min-w-0 space-y-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{r.user!.fullName}</span>
-                    <span className="truncate text-[11px] text-muted">
+                    <span className="truncate text-xs text-muted">
                       {r.user!.role === "RECEPTION" ? "استقبال" : `نقطة ${r.user!.projects.map((c) => projectName(db, c)).join(" + ")}`}
                     </span>
                   </span>

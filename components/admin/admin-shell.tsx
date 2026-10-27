@@ -53,7 +53,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               if (!items.length) return null;
               return (
                 <div key={g.id}>
-                  <div className="mb-1 px-3 text-[11px] font-bold tracking-wide text-muted/80">{g.label}</div>
+                  <div className="mb-1 px-3 text-xs font-bold tracking-wide text-muted/80">{g.label}</div>
                   <div className="space-y-0.5">
                     {items.map((n) => {
                       const on = isActive(n.href);
@@ -132,7 +132,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 href={n.href}
                 aria-current={isActive(n.href) ? "page" : undefined}
                 className={cn(
-                  "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold transition",
+                  "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-bold transition",
                   isActive(n.href) ? "text-brand" : "text-muted",
                 )}
               >
@@ -146,7 +146,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               onClick={() => setMore(true)}
               aria-expanded={more}
               className={cn(
-                "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold",
+                "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-bold",
                 secondary.some((n) => isActive(n.href)) ? "text-brand" : "text-muted",
               )}
             >

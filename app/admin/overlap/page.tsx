@@ -16,7 +16,7 @@ import {
   Users2,
   X,
 } from "lucide-react";
-import { Bar, CenterTabs, ExportButton, FilterBar, PageHead, SectionHead, Segmented, StatCard } from "@/components/admin/bits";
+import { Bar, CenterTabs, DateField, ExportButton, FilterBar, PageHead, SectionHead, Segmented, StatCard } from "@/components/admin/bits";
 import { IdTypeTag } from "@/components/entry/id-fields";
 import { ShareDialog } from "@/components/entry/share-dialog";
 import { Card } from "@/components/ui/card";
@@ -47,6 +47,14 @@ export default function OverlapPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [shown, setShown] = useState(PAGE);
   const [share, setShare] = useState(false);
+  // الجوال: التقرير مقسّم لتبويبات بدل صفحة طويلة جداً (الشاشات الكبيرة تعرض كل الأقسام)
+  const [mview, setMview] = useState<"summary" | "matrix" | "list">("summary");
+  const isMobile = () => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches;
+  /** فتح قائمة الهويات بعد اختيار مشروع أو زوج */
+  const toList = (always = false) => {
+    setMview("list");
+    if (always || isMobile()) requestAnimationFrame(() => document.getElementById("overlap-list")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   const range = useMemo((): [string, string] => {
     if (period === "today") return [today, today];
@@ -123,6 +131,7 @@ export default function OverlapPage() {
       <FilterBar>
         <Segmented
           label="الفترة"
+          className="max-sm:scroll-fade"
           value={period}
           onChange={setPeriod}
           options={[
@@ -135,27 +144,9 @@ export default function OverlapPage() {
         />
         {period === "custom" && (
           <div className="flex items-center gap-1.5 rounded-xl bg-sunken p-1">
-            <input
-              type="date"
-              lang="en-GB"
-              dir="ltr"
-              aria-label="من"
-              max={today}
-              value={from}
-              onChange={(e) => e.target.value && setFrom(e.target.value)}
-              className="num h-9 rounded-lg bg-surface px-2 text-sm font-bold shadow-sm outline-hidden"
-            />
+            <DateField label="من" max={today} value={from} onChange={setFrom} className="h-10 bg-surface shadow-sm" />
             <span className="px-0.5 text-xs font-bold text-muted">إلى</span>
-            <input
-              type="date"
-              lang="en-GB"
-              dir="ltr"
-              aria-label="إلى"
-              max={today}
-              value={to}
-              onChange={(e) => e.target.value && setTo(e.target.value)}
-              className="num h-9 rounded-lg bg-surface px-2 text-sm font-bold shadow-sm outline-hidden"
-            />
+            <DateField label="إلى" max={today} value={to} onChange={setTo} className="h-10 bg-surface shadow-sm" />
           </div>
         )}
         <CenterTabs value={center} onChange={setCenter} />
@@ -200,9 +191,24 @@ export default function OverlapPage() {
         </Card>
       ) : (
         <>
-          <div className="mt-6 grid gap-6">
+          {/* تبويبات الجوال */}
+          <div className="sticky top-14 z-20 -mx-4 mt-5 bg-bg/90 px-4 py-2 backdrop-blur lg:hidden">
+            <Segmented
+              label="أقسام التقرير"
+              value={mview}
+              onChange={setMview}
+              className="flex w-full [&>button]:flex-1"
+              options={[
+                { value: "summary", label: "الملخص" },
+                { value: "matrix", label: "المصفوفة" },
+                { value: "list", label: "الهويات", count: list.length },
+              ]}
+            />
+          </div>
+
+          <div className="grid gap-6 max-lg:mt-3 lg:mt-6">
             {/* مصفوفة التداخل */}
-            <Card className="overflow-hidden">
+            <Card className={cn("overflow-hidden", mview !== "matrix" && "max-lg:hidden")}>
               <SectionHead title="مصفوفة التداخل بين المشاريع" icon={GitMerge} sub="عدد الهويات المشتركة بين كل مشروعين. اضغط على أي خانة لعرض هوياتها" />
               <div className="overflow-x-auto p-3 sm:p-4">
                 <table className="w-full min-w-[560px] table-fixed border-separate border-spacing-1 text-xs">
@@ -232,7 +238,7 @@ export default function OverlapPage() {
                             return (
                               <td
                                 key={col.code}
-                                className="h-11 min-w-11 rounded-lg bg-sunken/60 text-center text-[11px] text-muted"
+                                className="h-11 min-w-11 rounded-lg bg-sunken/60 text-center text-xs text-muted"
                                 title={`${row.name}: ${pp.served} هوية مخدومة`}
                               >
                                 <span className="num">{pp.served}</span>
@@ -248,7 +254,7 @@ export default function OverlapPage() {
                                 onClick={() => {
                                   setPair(on ? null : [row.code, col.code]);
                                   setProject("");
-                                  document.getElementById("overlap-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                  toList(true);
                                 }}
                                 title={`${row.name} + ${col.name}: ${n} هوية`}
                                 className={cn(
@@ -281,7 +287,7 @@ export default function OverlapPage() {
               </p>
             </Card>
 
-            <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+            <div className={cn("grid min-w-0 gap-6 lg:grid-cols-2", mview !== "summary" && "max-lg:hidden")}>
               {/* أكثر الأزواج */}
               <Card className="overflow-hidden">
                 <SectionHead title="أكثر المشاريع تداخلاً" icon={ArrowDownWideNarrow} />
@@ -294,6 +300,7 @@ export default function OverlapPage() {
                           onClick={() => {
                             setPair(on ? null : [p.a, p.b]);
                             setProject("");
+                            if (!on) toList();
                           }}
                           className={cn("w-full space-y-1.5 px-4 py-2.5 text-start hover:bg-sunken/50 sm:px-5", on && "bg-warn-soft/60")}
                         >
@@ -327,7 +334,7 @@ export default function OverlapPage() {
                         <div className="text-xs font-semibold text-muted">
                           في <span className="num">{n}</span> مشاريع
                         </div>
-                        <div className="num mt-1 text-[11px] font-bold text-warn">{Math.round((c / r.rows.length) * 100)}%</div>
+                        <div className="num mt-1 text-xs font-bold text-warn">{Math.round((c / r.rows.length) * 100)}%</div>
                       </div>
                     ))}
                 </div>
@@ -336,7 +343,7 @@ export default function OverlapPage() {
           </div>
 
           {/* نسبة التداخل لكل مشروع */}
-          <Card className="mt-6 overflow-hidden">
+          <Card className={cn("mt-6 overflow-hidden", mview !== "summary" && "max-lg:hidden")}>
             <SectionHead title="نسبة التداخل لكل مشروع" icon={Percent} sub="من الهويات التي خدمها المشروع، كم منها خدمها مشروع آخر أيضاً" />
             <ul className="grid gap-x-8 gap-y-3 p-4 sm:grid-cols-2 sm:p-5">
               {projects
@@ -350,8 +357,9 @@ export default function OverlapPage() {
                         onClick={() => {
                           setProject(project === p.code ? "" : p.code);
                           setPair(null);
+                          if (project !== p.code) toList();
                         }}
-                        className="w-full space-y-1.5 text-start"
+                        className="focus-ring w-full space-y-1.5 rounded-lg text-start"
                       >
                         <span className="flex items-center justify-between gap-2 text-sm">
                           <span className="flex items-center gap-1.5 font-bold">
@@ -371,7 +379,7 @@ export default function OverlapPage() {
           </Card>
 
           {/* القائمة التفصيلية */}
-          <Card id="overlap-list" className="mt-6 scroll-mt-4 overflow-hidden">
+          <Card id="overlap-list" className={cn("scroll-mt-32 overflow-hidden max-lg:mt-3 lg:mt-6 lg:scroll-mt-4", mview !== "list" && "max-lg:hidden")}>
             <SectionHead title="الهويات المكررة" icon={Fingerprint} sub={`${list.length} هوية · ${periodLabel}`} />
             <div className="space-y-3 border-b border-line p-3 sm:p-4">
               <div className="flex flex-wrap items-center gap-2">
@@ -405,7 +413,7 @@ export default function OverlapPage() {
                   ]}
                 />
               </div>
-              <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-0.5 sm:-mx-4 sm:px-4">
+              <div className="scroll-fade -mx-3 flex gap-2 overflow-x-auto px-3 pb-0.5 sm:-mx-4 sm:px-4 sm:pe-10">
                 {pair ? (
                   <button
                     onClick={() => setPair(null)}
@@ -481,7 +489,7 @@ export default function OverlapPage() {
                           <IdTypeTag type={b?.type} />
                           {row.sameDays.length > 0 && (
                             <span
-                              className="inline-flex items-center gap-1 rounded-md bg-bad-soft px-1.5 py-0.5 text-[11px] font-bold text-bad"
+                              className="inline-flex items-center gap-1 rounded-md bg-bad-soft px-1.5 py-0.5 text-xs font-bold text-bad"
                               title={row.sameDays.map(dayFull).join("، ")}
                             >
                               <CalendarClock className="size-3" />
@@ -498,7 +506,7 @@ export default function OverlapPage() {
                               style={{ background: projectSoft(projectColor(db, p.code)), color: projectColor(db, p.code) }}
                             >
                               {projectName(db, p.code)}
-                              <span className="num rounded bg-surface/80 px-1 text-[11px] text-ink">{p.count}</span>
+                              <span className="num rounded bg-surface/80 px-1 text-xs text-ink">{p.count}</span>
                             </span>
                           ))}
                         </span>
@@ -568,7 +576,7 @@ function Timeline({ row, db }: { row: OverlapRow; db: Db }) {
                 <span className={cn("absolute -start-[23px] top-1 size-3 rounded-full border-2 border-surface", multi ? "bg-bad" : "bg-muted/50")} />
                 <div className="text-xs font-bold">
                   {weekday(d)} <span className="num">{dayFull(d)}</span>
-                  {multi && <span className="ms-2 rounded bg-bad-soft px-1.5 text-[11px] text-bad">أكثر من مشروع</span>}
+                  {multi && <span className="ms-2 rounded bg-bad-soft px-1.5 text-xs text-bad">أكثر من مشروع</span>}
                 </div>
                 <ul className="mt-1 space-y-1">
                   {items.map((s) => (

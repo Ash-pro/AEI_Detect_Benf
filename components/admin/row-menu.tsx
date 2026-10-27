@@ -137,7 +137,7 @@ export function RowMenu({
         aria-expanded={open}
         aria-label={`خيارات ${title}`}
         className={cn(
-          "focus-ring grid size-9 place-items-center rounded-lg border text-muted transition",
+          "focus-ring grid size-10 place-items-center rounded-lg border text-muted transition",
           open ? "border-brand bg-brand-soft text-brand" : "border-transparent hover:border-line hover:bg-sunken hover:text-ink",
         )}
       >

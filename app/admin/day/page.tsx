@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Hourglass, Pencil, Search, Stethoscope, Store, UserPlus, X } from "lucide-react";
-import { CenterTabs, DateStepper, ExportButton, FilterBar, PageHead, Segmented, StatCard, coverage } from "@/components/admin/bits";
+import { CenterTabs, DateStepper, ExportButton, FilterBar, PageHead, Segmented, StatCard, StatStrip, coverage } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
 import { EntryBadges, KindTag, ProjectChip } from "@/components/entry/history";
 import { projectColor, projectSoft } from "@/lib/project-colors";
@@ -16,7 +16,7 @@ import { type CenterFilter, centerName, dayStats, filterCenter, userName, worked
 import type { Entry } from "@/lib/types";
 import { cn, dayFull, formatTime, normalizeArabicName, normalizeDigits, todayKey, weekday } from "@/lib/utils";
 
-const PAGE = 50;
+const PAGE = 30;
 
 /** الشاشة 6 — تفاصيل يوم */
 function DayInner() {
@@ -73,7 +73,17 @@ function DayInner() {
         <CenterTabs value={center} onChange={setCenter} />
       </FilterBar>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* الجوال: صف مؤشرات مضغوط */}
+      <StatStrip
+        className="sm:hidden"
+        items={[
+          { label: "استقبال", value: s.reception, tone: "brand" },
+          { label: "جديدة", value: s.receptionNew, tone: "info" },
+          { label: "خُدمت", value: s.point, tone: "ok", hint: pct === null ? undefined : `${pct}%` },
+          { label: isToday ? "بانتظار" : "لم تُخدم", value: waiting, tone: waiting ? "warn" : "ink" },
+        ]}
+      />
+      <div className="hidden grid-cols-2 gap-3 sm:grid lg:grid-cols-4">
         <StatCard label="حالات الاستقبال" value={s.reception} tone="brand" icon={Store} hint={`${s.staff} موظف عملوا`} />
         <StatCard label="حالات جديدة" value={s.receptionNew} tone="info" icon={UserPlus} hint={s.reception ? `${Math.round((s.receptionNew / s.reception) * 100)}% من الاستقبال` : undefined} />
         <StatCard label="خُدمت في النقاط" value={s.point} tone="ok" icon={Stethoscope} hint={pct === null ? undefined : `نسبة الخدمة ${pct}%`} />
@@ -82,7 +92,7 @@ function DayInner() {
 
       {/* المشاريع: فلتر مع موجّه/مخدوم */}
       {projRows.length > 0 && (
-        <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+        <div className="scroll-fade -mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:no-fade sm:mx-0 sm:flex-wrap sm:px-0">
           <button
             onClick={() => setProject("")}
             aria-pressed={!project}
@@ -109,7 +119,7 @@ function DayInner() {
                   <span className="block text-sm font-bold" style={on ? { color: c } : undefined}>
                     {p.name}
                   </span>
-                  <span className="num block text-[11px] font-semibold text-muted">
+                  <span className="num block text-xs font-semibold text-muted">
                     موجّه {p.referred} · مخدوم {p.served}
                     {p.waiting ? ` · بانتظار ${p.waiting}` : ""}
                   </span>
@@ -120,8 +130,9 @@ function DayInner() {
         </div>
       )}
 
-      <Card className="mt-4 overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b border-line p-3 sm:gap-3 sm:p-4">
+      {/* overflow-clip بدل hidden حتى يبقى شريط البحث ثابتاً أثناء التمرير */}
+      <Card className="mt-4 overflow-clip">
+        <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 border-b border-line bg-surface/95 p-3 backdrop-blur sm:gap-3 sm:p-4 lg:top-0">
           <div className="relative min-w-[200px] flex-1">
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input
@@ -158,7 +169,7 @@ function DayInner() {
                 <span className="flex flex-wrap items-center gap-1.5">
                   <span className="truncate font-bold">{db.beneficiaries[e.nid]?.name || "—"}</span>
                   <IdTypeTag type={db.beneficiaries[e.nid]?.type} />
-                  {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+                  {e.isNew && <span className="rounded bg-info-soft px-1.5 text-xs font-bold text-info">جديدة</span>}
                 </span>
                 <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
                   <span className="num font-semibold tracking-wider text-ink/80">{e.nid}</span>
@@ -204,7 +215,7 @@ function DayInner() {
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
                       <span className="font-semibold">{db.beneficiaries[e.nid]?.name || <span className="text-muted">—</span>}</span>
                       <IdTypeTag type={db.beneficiaries[e.nid]?.type} />
-                      {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+                      {e.isNew && <span className="rounded bg-info-soft px-1.5 text-xs font-bold text-info">جديدة</span>}
                     </span>
                   </td>
                   <td className="num px-3 py-2.5 tracking-wider">{e.nid}</td>
@@ -221,7 +232,7 @@ function DayInner() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-muted">
                     {userName(db, e.userId)}
-                    {center === "ALL" && <span className="block text-[11px]">{centerName(db, e.center, true)}</span>}
+                    {center === "ALL" && <span className="block text-xs">{centerName(db, e.center, true)}</span>}
                   </td>
                   {canEdit && (
                     <td className="px-2 py-1">

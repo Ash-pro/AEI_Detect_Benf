@@ -9,12 +9,12 @@ import { cn, dayFull, formatTime } from "@/lib/utils";
 
 export function KindTag({ kind }: { kind: Entry["kind"] }) {
   return kind === "RECEPTION" ? (
-    <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
+    <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-xs font-bold text-info">
       <Store className="size-3" />
       استقبال
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-md bg-ok-soft px-1.5 py-0.5 text-[11px] font-bold text-ok">
+    <span className="inline-flex items-center gap-1 rounded-md bg-ok-soft px-1.5 py-0.5 text-xs font-bold text-ok">
       <Stethoscope className="size-3" />
       نقطة
     </span>
@@ -33,7 +33,7 @@ export function ProjectChip({ db, code, number, tone = "sunken" }: { db: Db; cod
       <span className="size-2 shrink-0 rounded-full" style={{ background: projectColor(db, code) }} aria-hidden />
       {projectName(db, code)}
       {number ? (
-        <span className="num rounded px-1 text-[11px] leading-4 text-white" style={{ background: projectColor(db, code) }} title="رقم الدور">
+        <span className="num rounded px-1 text-xs leading-4 text-white" style={{ background: projectColor(db, code) }} title="رقم الدور">
           {number}
         </span>
       ) : null}
@@ -50,7 +50,7 @@ export function EntryBadges({ e, db }: { e: Entry; db: Db }) {
     <>
       {e.noDonor && (
         <span
-          className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn"
+          className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-xs font-bold text-warn"
           title={[e.noDonor.reason, appt ? apptWhen(appt) : ""].filter(Boolean).join(" · ")}
         >
           <CalendarClock className="size-3" />
@@ -58,7 +58,7 @@ export function EntryBadges({ e, db }: { e: Entry; db: Db }) {
         </span>
       )}
       {refs.map(([p, r]) => (
-        <span key={p} className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info" title={r.note}>
+        <span key={p} className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-xs font-bold text-info" title={r.note}>
           <Stethoscope className="size-3" />
           {projectName(db, p)} بتحويل من نقطة{r.from ? ` ${projectName(db, r.from)}` : ""}
         </span>
@@ -93,7 +93,7 @@ export function HistoryRow({
         <span className="flex min-w-0 basis-full items-center gap-1.5 sm:basis-auto">
           <span className="truncate font-bold">{b?.name || "—"}</span>
           {b?.type && (
-            <span className="shrink-0 rounded bg-sunken px-1.5 text-[11px] font-bold text-muted">
+            <span className="shrink-0 rounded bg-sunken px-1.5 text-xs font-bold text-muted">
               {b.type === "MOTHER" ? "أم" : b.type === "FATHER" ? "أب" : "طفل"}
             </span>
           )}
@@ -108,7 +108,7 @@ export function HistoryRow({
         <EntryBadges e={e} db={db} />
         {e.corrected && (
           <span
-            className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn"
+            className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-xs font-bold text-warn"
             title={`كان: ${e.corrected.from.map((p) => projectName(db, p)).join("، ")}`}
           >
             <PenLine className="size-3" />

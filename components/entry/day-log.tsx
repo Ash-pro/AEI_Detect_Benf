@@ -29,6 +29,8 @@ import type { CenterCode, Db, Entry, SessionUser } from "@/lib/types";
 import { addDays, cn, dayFull, dayNum, formatTime, monthKey, monthLabel, normalizeArabicName, normalizeDigits, todayKey, weekday } from "@/lib/utils";
 
 const RECENT_DAYS = 30;
+/** اليوم المزدحم: نعرض أول مجموعة من الأسطر ثم "عرض المزيد" حتى لا تطول الصفحة على الجوال */
+const PAGE = 30;
 
 type SortMode = "queue" | "new" | "old";
 const SORTS: { value: SortMode; label: string; icon: typeof ListOrdered }[] = [
@@ -66,6 +68,9 @@ export function DayLog({
   const [sort, setSort] = useState<SortMode>("queue");
   const [edit, setEdit] = useState<Entry | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [more, setMore] = useState<Record<string, number>>({});
+  const limitOf = (k: string) => more[k] ?? PAGE;
+  const showMore = (k: string) => setMore((m) => ({ ...m, [k]: (m[k] ?? PAGE) + PAGE * 2 }));
 
   /* كل إدخالات الموظف في هذا المركز */
   const mine = useMemo(() => db.entries.filter((e) => e.userId === user.id && e.center === center), [db, user.id, center]);
@@ -91,6 +96,7 @@ export function DayLog({
   useEffect(() => {
     setQ("");
     setProject("");
+    setMore({});
   }, [date]);
   /* اليوم المزدحم: نفتح أول مشروع فقط حتى تبقى القائمة قصيرة، والباقي بضغطة */
   const autoKey = `${date}|${center}`;
@@ -173,7 +179,7 @@ export function DayLog({
       {/* ===== الأيام ===== */}
       <aside aria-label="الأيام" className="min-w-0">
         {/* الجوال: شريط أفقي */}
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:hidden">
+        <div className="scroll-fade -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:hidden">
           {visible.map((d) => (
             <button
               key={d.date}
@@ -303,7 +309,7 @@ export function DayLog({
             {kpis.map((k) => (
               <div key={k.label} className="min-w-0 rounded-xl bg-sunken px-2.5 py-2 sm:px-3">
                 <div className={cn("num text-lg font-bold leading-tight sm:text-xl", k.cls)}>{k.value}</div>
-                <div className="truncate text-[11px] font-semibold text-muted" title={k.label}>
+                <div className="truncate text-xs font-semibold text-muted" title={k.label}>
                   {k.label}
                 </div>
               </div>
@@ -353,7 +359,7 @@ export function DayLog({
 
           {/* المشاريع: فلتر وملخص في صف واحد */}
           {dayProjects.length > 0 && (
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 sm:-mx-5 sm:px-5">
+            <div className="scroll-fade -mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 sm:-mx-5 sm:px-5 sm:pe-10">
               <FilterChip on={!project} onClick={() => setProject("")} label="كل المشاريع" count={dayEntries.length} />
               {dayProjects.map((p) => (
                 <FilterChip
@@ -382,7 +388,7 @@ export function DayLog({
               {sort === "queue" && groups.length > 1 && (
                 <button
                   onClick={() => setCollapsed(new Set(allOpen ? groups.map((g) => g.code) : []))}
-                  className="rounded-md px-1.5 py-0.5 font-bold text-brand hover:bg-brand-soft"
+                  className="focus-ring min-h-9 rounded-lg px-2.5 font-bold text-brand hover:bg-brand-soft"
                 >
                   {allOpen ? "طيّ الكل" : "فتح الكل"}
                 </button>
@@ -435,22 +441,28 @@ export function DayLog({
                     <ChevronDown className={cn("ms-auto size-4 text-muted transition", closed && "-rotate-90")} />
                   </button>
                   {!closed && (
-                    <ul className="divide-y divide-line/60">
-                      {g.items.map((r) => (
-                        <Row key={r.e.id + r.project} e={r.e} db={db} isPoint={isPoint} canEdit={isToday} mode="queue" project={r.project} number={r.number} onOpen={() => onOpen(r.e.nid)} onEdit={() => setEdit(r.e)} />
-                      ))}
-                    </ul>
+                    <>
+                      <ul className="divide-y divide-line/60">
+                        {g.items.slice(0, limitOf(g.code)).map((r) => (
+                          <Row key={r.e.id + r.project} e={r.e} db={db} isPoint={isPoint} canEdit={isToday} mode="queue" project={r.project} number={r.number} onOpen={() => onOpen(r.e.nid)} onEdit={() => setEdit(r.e)} />
+                        ))}
+                      </ul>
+                      <MoreButton shown={limitOf(g.code)} total={g.items.length} onClick={() => showMore(g.code)} />
+                    </>
                   )}
                 </section>
               );
             })}
           </div>
         ) : list.length ? (
-          <ul className="divide-y divide-line/60">
-            {list.map((e) => (
-              <Row key={e.id} e={e} db={db} isPoint={isPoint} canEdit={isToday} mode="time" onOpen={() => onOpen(e.nid)} onEdit={() => setEdit(e)} />
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-line/60">
+              {list.slice(0, limitOf("time")).map((e) => (
+                <Row key={e.id} e={e} db={db} isPoint={isPoint} canEdit={isToday} mode="time" onOpen={() => onOpen(e.nid)} onEdit={() => setEdit(e)} />
+              ))}
+            </ul>
+            <MoreButton shown={limitOf("time")} total={list.length} onClick={() => showMore("time")} />
+          </>
         ) : (
           <div className="flex flex-col items-center gap-2 px-5 py-16 text-center">
             <CalendarDays className="size-9 text-muted/60" />
@@ -489,6 +501,19 @@ export function DayLog({
   );
 }
 
+function MoreButton({ shown, total, onClick }: { shown: number; total: number; onClick: () => void }) {
+  if (total <= shown) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="focus-ring flex min-h-12 w-full items-center justify-center gap-1.5 border-t border-line bg-sunken/40 px-4 text-sm font-bold text-brand hover:bg-sunken"
+    >
+      <ChevronDown className="size-4" />
+      عرض المزيد <span className="num font-semibold text-muted">({total - shown})</span>
+    </button>
+  );
+}
+
 function FilterChip({ on, onClick, label, count, color, sub }: { on: boolean; onClick: () => void; label: string; count: number; color?: string; sub?: string }) {
   return (
     <button
@@ -505,7 +530,7 @@ function FilterChip({ on, onClick, label, count, color, sub }: { on: boolean; on
         <span className={cn("block text-sm font-bold", on && !color && "text-brand")} style={on && color ? { color } : undefined}>
           {label} <span className="num font-semibold text-muted">{count}</span>
         </span>
-        {sub && <span className="num block text-[11px] font-semibold text-muted">{sub}</span>}
+        {sub && <span className="num block text-xs font-semibold text-muted">{sub}</span>}
       </span>
     </button>
   );
@@ -548,7 +573,7 @@ function Row({
         title={number ? `رقم الدور في ${projectName(db, project!)}` : "بدون دور"}
       >
         <span className="num text-xl font-bold">{number ?? "—"}</span>
-        <span className="mt-0.5 max-w-full truncate px-1 text-[10px] font-bold opacity-90">{number ? projectName(db, project!) : "بدون دور"}</span>
+        <span className="mt-0.5 max-w-full truncate px-1 text-[11px] font-bold opacity-90">{number ? projectName(db, project!) : "بدون دور"}</span>
       </span>
     ) : (
       <span className="num w-[68px] shrink-0 whitespace-nowrap text-sm font-bold md:w-[76px]">{formatTime(e.at)}</span>
@@ -565,9 +590,9 @@ function Row({
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
             <IdTypeTag type={b?.type} />
-            {e.isNew && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">جديدة</span>}
+            {e.isNew && <span className="rounded bg-info-soft px-1.5 text-xs font-bold text-info">جديدة</span>}
             <EntryBadges e={e} db={db} />
-            {isReferral && <span className="rounded bg-info-soft px-1.5 text-[11px] font-bold text-info">تحويل منك</span>}
+            {isReferral && <span className="rounded bg-info-soft px-1.5 text-xs font-bold text-info">تحويل منك</span>}
           </span>
           {/* الجوال: الهوية والوقت تحت الاسم */}
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted md:hidden">
@@ -578,7 +603,7 @@ function Row({
                 <span className="size-1.5 rounded-full" style={{ background: projectColor(db, p) }} aria-hidden />
                 {projectName(db, p)}
                 {e.queue?.[p] ? (
-                  <span className="num rounded px-1 text-[10px] leading-4 text-white" style={{ background: projectColor(db, p) }}>
+                  <span className="num rounded px-1 text-[11px] leading-4 text-white" style={{ background: projectColor(db, p) }}>
                     {e.queue[p]}
                   </span>
                 ) : null}
@@ -586,7 +611,7 @@ function Row({
             ))}
           </span>
           {(e.corrected || otherId) && (
-            <span className="mt-1 flex flex-wrap gap-1 text-[11px]">
+            <span className="mt-1 flex flex-wrap gap-1 text-xs">
               {e.corrected && !isReferral && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 font-bold text-warn">
                   <PenLine className="size-3" />
@@ -607,7 +632,7 @@ function Row({
           {mode === "time" &&
             e.projects.map((p) => <ProjectChip key={p} db={db} code={p} number={isPoint ? pq?.number : e.queue?.[p]} />)}
           {mode === "time" && isPoint && !pq?.number && !isReferral && (
-            <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-semibold text-muted">بدون دور</span>
+            <span className="rounded-md bg-sunken px-1.5 py-0.5 text-xs font-semibold text-muted">بدون دور</span>
           )}
           {others.map((p) => (
             <ProjectChip key={p} db={db} code={p} number={e.queue?.[p]} />

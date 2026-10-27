@@ -37,12 +37,12 @@ function ColorPicker({ color, name, onPick }: { color: string; name: string; onP
         aria-label={`لون دور ${name}`}
         aria-expanded={open}
         title="لون الدور"
-        className="focus-ring grid size-8 place-items-center rounded-lg border border-line bg-surface"
+        className="focus-ring grid size-10 place-items-center rounded-lg border border-line bg-surface"
       >
-        <span className="size-5 rounded-md" style={{ background: color }} />
+        <span className="size-6 rounded-md" style={{ background: color }} />
       </button>
       {open && (
-        <div className="fixed z-50 w-[188px] rounded-xl border border-line bg-surface p-2 shadow-pop" style={{ top: pos!.top, right: pos!.right }}>
+        <div className="fixed z-50 w-[220px] rounded-xl border border-line bg-surface p-2 shadow-pop" style={{ top: pos!.top, right: pos!.right }}>
           <div className="mb-1.5 px-1 text-xs font-semibold text-muted">لون الدور</div>
           <div className="grid grid-cols-5 gap-1.5">
             {PALETTE.map((c) => (
@@ -53,7 +53,7 @@ function ColorPicker({ color, name, onPick }: { color: string; name: string; onP
                   setOpen(false);
                 }}
                 aria-label={c}
-                className={cn("grid size-8 place-items-center rounded-lg", c === color && "ring-2 ring-ink ring-offset-2")}
+                className={cn("grid size-10 place-items-center rounded-lg", c === color && "ring-2 ring-ink ring-offset-2")}
                 style={{ background: c }}
               >
                 {c === color && <Check className="size-4 text-white" strokeWidth={3} />}
@@ -118,7 +118,7 @@ export default function ProjectsPage() {
               <ColorPicker color={projectColor(db, p.code)} name={p.name} onPick={(color) => save({ ...p, color }, `تم تغيير لون ${p.name}`, `${p.code}:color`)} />
               <div className="min-w-0 flex-1">
                 <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
-                <code className="mt-0.5 block px-2 text-start text-[11px] text-muted">{p.code}</code>
+                <code className="mt-0.5 block px-2 text-start text-xs text-muted">{p.code}</code>
                 <div className="mt-1.5 px-1">
                   <ProjectOptionsButton project={p} onOpen={() => setOptions(p)} />
                 </div>
@@ -141,14 +141,14 @@ export default function ProjectsPage() {
                   onClick={() => toggleCenter(p, c.code)}
                   disabled={busy === `${p.code}:${c.code}`}
                   className={cn(
-                    "focus-ring inline-flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 text-sm font-bold",
+                    "focus-ring inline-flex min-h-11 items-center gap-2 rounded-xl border-2 px-3.5 text-sm font-bold",
                     p.centers.includes(c.code) ? "border-brand bg-brand-soft text-brand" : "border-line text-muted",
                   )}
                 >
                   {busy === `${p.code}:${c.code}` ? (
                     <Spinner className="size-4 text-brand" />
                   ) : (
-                    <span className={cn("grid size-4 place-items-center rounded border-2", p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line")}>
+                    <span className={cn("grid size-5 place-items-center rounded border-2", p.centers.includes(c.code) ? "border-brand bg-brand text-white" : "border-line")}>
                       {p.centers.includes(c.code) && <Check className="size-3" strokeWidth={3} />}
                     </span>
                   )}
@@ -161,10 +161,10 @@ export default function ProjectsPage() {
                 موظفو النقطة <b className="num text-ink">{staffCount(p.code)}</b> · خدمات الشهر <b className="num text-ink">{monthCounts.get(p.code) ?? 0}</b>
               </span>
               <span className="flex gap-1">
-                <button disabled={i === 0 || busy !== null} onClick={() => move(p.code, -1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`رفع ${p.name}`}>
+                <button disabled={i === 0 || busy !== null} onClick={() => move(p.code, -1)} className="focus-ring grid size-11 place-items-center rounded-xl border border-line disabled:opacity-30" aria-label={`رفع ${p.name}`}>
                   {busy === `${p.code}:-1` ? <Spinner className="size-4" /> : <ArrowUp className="size-4" />}
                 </button>
-                <button disabled={i === list.length - 1 || busy !== null} onClick={() => move(p.code, 1)} className="focus-ring grid size-9 place-items-center rounded-lg border border-line disabled:opacity-30" aria-label={`إنزال ${p.name}`}>
+                <button disabled={i === list.length - 1 || busy !== null} onClick={() => move(p.code, 1)} className="focus-ring grid size-11 place-items-center rounded-xl border border-line disabled:opacity-30" aria-label={`إنزال ${p.name}`}>
                   {busy === `${p.code}:1` ? <Spinner className="size-4" /> : <ArrowDown className="size-4" />}
                 </button>
               </span>
@@ -198,7 +198,7 @@ export default function ProjectsPage() {
                       <button
                         disabled={i === 0 || busy !== null}
                         onClick={() => move(p.code, -1)}
-                        className="focus-ring grid size-8 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
+                        className="focus-ring grid size-9 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
                         aria-label={`رفع ${p.name}`}
                       >
                         {busy === `${p.code}:-1` ? <Spinner className="size-4" /> : <ArrowUp className="size-4" />}
@@ -206,7 +206,7 @@ export default function ProjectsPage() {
                       <button
                         disabled={i === list.length - 1 || busy !== null}
                         onClick={() => move(p.code, 1)}
-                        className="focus-ring grid size-8 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
+                        className="focus-ring grid size-9 place-items-center rounded-lg border border-line hover:bg-sunken disabled:opacity-30"
                         aria-label={`إنزال ${p.name}`}
                       >
                         {busy === `${p.code}:1` ? <Spinner className="size-4" /> : <ArrowDown className="size-4" />}
@@ -219,7 +219,7 @@ export default function ProjectsPage() {
                       <div className="min-w-0 flex-1">
                         <NameCell project={p} saving={busy === `${p.code}:name`} onSave={(name) => save({ ...p, name }, "تم حفظ اسم المشروع", `${p.code}:name`)} />
                         <span className="mt-0.5 flex flex-wrap items-center gap-2">
-                          <code className="text-start text-[11px] text-muted">{p.code}</code>
+                          <code className="text-start text-xs text-muted">{p.code}</code>
                           <ProjectOptionsButton project={p} onOpen={() => setOptions(p)} />
                         </span>
                       </div>

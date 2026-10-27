@@ -94,7 +94,7 @@ export default function DaysPage() {
                 <span className={cn("grid size-12 shrink-0 place-items-center rounded-xl text-center leading-tight", s.date === today ? "bg-brand text-brand-ink" : "bg-sunken")}>
                   <span>
                     <span className="num block text-lg font-bold">{dayNum(s.date).split("/")[0]}</span>
-                    <span className="block text-[10px] font-semibold opacity-80">{weekday(s.date)}</span>
+                    <span className="block text-[11px] font-semibold opacity-80">{weekday(s.date)}</span>
                   </span>
                 </span>
                 <span className="min-w-0 flex-1 space-y-1.5">
@@ -145,7 +145,7 @@ export default function DaysPage() {
                   <td className="sticky start-0 bg-surface px-4 py-2.5 group-hover:bg-sunken">
                     <span className="whitespace-nowrap">
                       <span className="font-bold">{weekday(s.date)}</span> <span className="num text-muted">{dayNum(s.date)}</span>
-                      {s.date === today && <span className="ms-2 rounded-md bg-brand-soft px-1.5 py-0.5 text-[11px] font-bold text-brand">اليوم</span>}
+                      {s.date === today && <span className="ms-2 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs font-bold text-brand">اليوم</span>}
                     </span>
                   </td>
                   <td className="num px-3 py-2.5 text-center font-bold text-brand">{s.reception}</td>

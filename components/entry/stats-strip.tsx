@@ -26,7 +26,7 @@ export function StatsStrip({ stats, isPoint, waiting, onShare }: { stats: StaffS
           {tiles.map((t) => (
             <div key={t.label} className="px-2 text-center first:ps-0 last:pe-0 sm:text-start">
               <div className={cn("num text-xl font-bold leading-none sm:text-2xl", t.cls)}>{t.value}</div>
-              <div className="mt-1 truncate text-[11px] font-medium text-muted sm:text-xs">{t.label}</div>
+              <div className="mt-1 truncate text-xs font-medium text-muted sm:text-xs">{t.label}</div>
             </div>
           ))}
         </div>
@@ -41,7 +41,7 @@ export function StatsStrip({ stats, isPoint, waiting, onShare }: { stats: StaffS
         </button>
       </div>
       {projects.length > 0 && (
-        <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto border-t border-line px-4 pt-2.5">
+        <div className="scroll-fade -mx-4 mt-3 flex gap-1.5 overflow-x-auto border-t border-line px-4 pt-2.5">
           {projects.map((p) => (
             <span key={p.code} className="shrink-0 rounded-lg bg-sunken px-2.5 py-1 text-xs font-bold">
               {p.name} <span className="num text-muted">{p.count}</span>

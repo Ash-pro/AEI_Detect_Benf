@@ -88,7 +88,7 @@ export function BeneficiaryCard({
               · {centerName(db, last.center)} · {userName(db, last.userId)}
             </span>
             {last.corrected && (
-              <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
+              <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-xs font-bold text-warn">
                 {correctionText(db, last.corrected, true)}
               </span>
             )}

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Label, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { IdTypeTag } from "./id-fields";
+import { DateField } from "@/components/ui/date-field";
 import { useStore } from "@/lib/store";
 import { projectName, userName } from "@/lib/queries";
 import { projectColor, projectSoft } from "@/lib/project-colors";
@@ -348,22 +349,20 @@ export function NoDonorDialog({
                 )}
               >
                 <span className={cn("block text-sm font-bold", due === q.day && "text-brand")}>{q.label}</span>
-                <span className="num block text-[11px] text-muted">
+                <span className="num block text-xs text-muted">
                   {weekday(q.day)} {dayFull(q.day)}
                 </span>
               </button>
             ))}
           </div>
-          <input
+          <DateField
             id="nd-due"
-            type="date"
-            lang="en-GB"
-            dir="ltr"
+            label="موعد العودة"
             min={addDays(today, 1)}
             max={addDays(today, 90)}
             value={due}
-            onChange={(e) => setDue(e.target.value)}
-            className="num h-11 rounded-xl border border-line bg-surface px-3 text-sm font-bold"
+            onChange={setDue}
+            className="h-11 rounded-xl border border-line bg-surface"
           />
           {due && (
             <p className={cn("mt-1.5 text-sm font-semibold", isFriday ? "text-bad" : "text-muted")}>

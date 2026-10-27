@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, Clock3, CopyCheck, Hourglass, Info, LayoutList, Share2, Stethoscope, Store, Trophy, UserPlus, Users } from "lucide-react";
 import {
   CenterTabs,
@@ -61,6 +62,7 @@ export default function AdminHome() {
   const sum = hours.reception.map((v, i) => v + hours.point[i]);
   const peak = sum.some(Boolean) ? sum.indexOf(Math.max(...sum)) : null;
   const staffRec = new Set(dayList.filter((e) => e.kind === "RECEPTION").map((e) => e.userId)).size;
+  const router = useRouter();
   const href = (code?: string) => `/admin/day?d=${date}&c=${center}${code ? `&p=${code}` : ""}`;
 
   return (
@@ -150,9 +152,9 @@ export default function AdminHome() {
                 </thead>
                 <tbody className="divide-y divide-line/70">
                   {rows.map((r) => (
-                    <tr key={r.code} className="group hover:bg-sunken/50">
+                    <tr key={r.code} className="group cursor-pointer hover:bg-sunken/50" onClick={() => router.push(href(r.code))}>
                       <td className="px-5 py-3">
-                        <Link href={href(r.code)} className="flex items-center gap-2 font-bold group-hover:text-brand">
+                        <Link href={href(r.code)} onClick={(e) => e.stopPropagation()} className="focus-ring inline-flex min-h-9 items-center gap-2 rounded-md font-bold group-hover:text-brand">
                           <span className="size-2.5 shrink-0 rounded-full" style={{ background: projectColor(db, r.code) }} />
                           {r.name}
                         </Link>
@@ -184,7 +186,7 @@ export default function AdminHome() {
                         <CoverageBar served={r.served} referred={r.referred} />
                       </td>
                       <td className="pe-3">
-                        <Link href={href(r.code)} aria-label={`تفاصيل ${r.name}`} className="grid size-10 place-items-center rounded-lg hover:bg-sunken">
+                        <Link href={href(r.code)} onClick={(e) => e.stopPropagation()} aria-label={`تفاصيل ${r.name}`} className="grid size-10 place-items-center rounded-lg hover:bg-sunken">
                           <ChevronLeft className="size-4 text-muted group-hover:text-brand" />
                         </Link>
                       </td>

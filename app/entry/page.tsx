@@ -352,16 +352,17 @@ function EntryScreen() {
         />
       ) : (
       <>
-      {/* أثناء العمل على هوية: إخفاء التلميح والإحصائيات للتركيز على الحالة */}
-      {!nid && <Hint text={hint} storageKey={`aei.hint.${u.role}`} />}
-
-      {!nid && <StatsStrip stats={stats} isPoint={isPoint} waiting={isPoint ? waiting : undefined} onShare={() => { setShareDay(null); setShareOpen(true); }} />}
-
       {lastDone && !nid && <QueueTicket db={db} done={lastDone} onClose={() => setLastDone(null)} />}
 
       {queueRef && <QueueRefBanner db={db} item={queueRef} nid={nid} onClear={() => { setQueueRef(null); if (nid) setSelected(preselect(nid, null)); }} />}
 
+      {/* حقل الهوية أول عنصر في الشاشة — هو الإجراء الأساسي */}
       <IdInput ref={inputRef} value={raw} onChange={onChange} onEnter={() => (nid ? submit() : raw.length < 9 && setError("رقم الهوية يجب أن يكون 9 أرقام"))} onClear={reset} error={error} loading={Boolean(nid) && checking} />
+
+      {/* أثناء العمل على هوية: إخفاء التلميح والإحصائيات للتركيز على الحالة */}
+      {!nid && <StatsStrip stats={stats} isPoint={isPoint} waiting={isPoint ? waiting : undefined} onShare={() => { setShareDay(null); setShareOpen(true); }} />}
+
+      {!nid && <Hint text={hint} storageKey={`aei.hint.${u.role}`} />}
 
       {nid && checking && <LookupSkeleton />}
 
@@ -632,7 +633,8 @@ function ViewTabs({
           aria-selected={view === t.value}
           onClick={() => onChange(t.value)}
           className={cn(
-            "focus-ring flex h-12 items-center justify-center gap-1.5 rounded-xl px-1 text-[15px] font-bold transition sm:gap-2",
+            "focus-ring flex h-12 min-w-0 items-center justify-center gap-1 rounded-xl px-1 font-bold transition sm:gap-2",
+            tabs.length === 4 ? "text-sm sm:text-[15px]" : "text-[15px]",
             view === t.value ? "bg-brand text-brand-ink shadow-card" : "text-muted hover:bg-sunken hover:text-ink",
           )}
         >
@@ -642,7 +644,7 @@ function ViewTabs({
           {t.value === "queue" && (
             <span
               className={cn(
-                "num min-w-6 rounded-full px-1.5 text-xs leading-5",
+                "num min-w-5 shrink-0 rounded-full px-1.5 text-xs leading-5",
                 view === "queue" ? "bg-surface/25" : waiting ? "bg-warn text-white" : "bg-sunken text-ink",
               )}
             >
@@ -650,7 +652,7 @@ function ViewTabs({
             </span>
           )}
           {t.value === "appts" && Boolean(appts) && (
-            <span className={cn("num min-w-6 rounded-full px-1.5 text-xs leading-5", view === "appts" ? "bg-surface/25" : "bg-warn text-white")}>{appts}</span>
+            <span className={cn("num min-w-5 shrink-0 rounded-full px-1.5 text-xs leading-5", view === "appts" ? "bg-surface/25" : "bg-warn text-white")}>{appts}</span>
           )}
         </button>
       ))}
@@ -714,7 +716,7 @@ function QueueRefBanner({ db, item, nid, onClear }: { db: Parameters<typeof proj
             {b?.name || item.reception.nid} {b?.type && <span className="font-semibold text-muted">({idTypeLabel(b.type)})</span>}
           </div>
         </div>
-        <button onClick={onClear} className="focus-ring inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-muted hover:bg-surface/70">
+        <button onClick={onClear} className="focus-ring inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-black/10 bg-surface/60 px-3 text-sm font-bold text-muted hover:bg-surface">
           <X className="size-4" />
           إلغاء الربط
         </button>
@@ -729,10 +731,17 @@ function QueueRefBanner({ db, item, nid, onClear }: { db: Parameters<typeof proj
   );
 }
 
-/** التلميح: مطوي بسطر واحد بعد أول قراءة، ويُفتح عند الحاجة */
+/** التلميح: مفتوح في أول استخدام فقط، ثم مطوي بسطر واحد ويُفتح عند الحاجة */
 function Hint({ text, storageKey }: { text: string; storageKey: string }) {
-  const [open, setOpen] = useState(true);
-  useEffect(() => setOpen(storageGet<boolean>(storageKey, true)), [storageKey]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const saved = storageGet<boolean | null>(storageKey, null);
+    if (saved === null) {
+      // أول مرة: نعرضه مفتوحاً ونحفظه مطوياً للمرات القادمة
+      setOpen(true);
+      storageSet(storageKey, false);
+    } else setOpen(saved);
+  }, [storageKey]);
   if (!text) return null;
   const toggle = () => {
     storageSet(storageKey, !open);
@@ -742,7 +751,7 @@ function Hint({ text, storageKey }: { text: string; storageKey: string }) {
     <button
       onClick={toggle}
       aria-expanded={open}
-      className="focus-ring flex w-full items-start gap-3 rounded-2xl bg-info-soft px-4 py-3 text-start text-[15px] font-semibold text-info"
+      className="focus-ring flex min-h-11 w-full items-start gap-3 rounded-2xl bg-info-soft px-4 py-2.5 text-start text-sm font-semibold text-info sm:text-[15px]"
     >
       <Info className="mt-0.5 size-5 shrink-0" />
       <span className={cn("flex-1", !open && "truncate")}>{text}</span>

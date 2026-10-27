@@ -27,6 +27,11 @@ export function StaffHeader() {
   const st = CENTER_STYLE[center];
   const roleLabel =
     user.role === "POINT" ? `نقطة ${user.projects.map((p) => projectName(db, p)).join(" + ")}` : "استقبال";
+  // الجوال: اسم المشروع الأول + عدد الباقي بدل نص مقصوص
+  const shortLabel =
+    user.role === "POINT" && user.projects.length
+      ? `${projectName(db, user.projects[0])}${user.projects.length > 1 ? ` +${user.projects.length - 1}` : ""}`
+      : roleLabel;
 
   return (
     <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur" ref={ref}>
@@ -46,7 +51,10 @@ export function StaffHeader() {
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn("size-2.5 shrink-0 rounded-full", st.dot)} />
           <span className={cn("shrink-0 font-bold", st.text)}>{centerName(db, center, true)}</span>
-          <span className="truncate rounded-lg border border-line px-2 py-0.5 text-sm font-bold">{roleLabel}</span>
+          <span className="truncate rounded-lg border border-line px-2 py-0.5 text-xs font-bold sm:text-sm" title={roleLabel}>
+            <span className="sm:hidden" dir="auto">{shortLabel}</span>
+            <span className="hidden sm:inline">{roleLabel}</span>
+          </span>
         </div>
         <div className="relative ms-auto">
           <button
@@ -63,6 +71,7 @@ export function StaffHeader() {
           {open && (
             <div className="absolute end-0 top-full z-50 mt-2 w-56 animate-fade-up rounded-xl border border-line bg-surface p-1.5 shadow-pop">
               <div className="px-3 py-2 text-xs text-muted">
+                <div className="mb-1 font-bold text-ink">{roleLabel}</div>
                 {user.fullName}
                 <div className="ltr text-start">{user.username}</div>
               </div>

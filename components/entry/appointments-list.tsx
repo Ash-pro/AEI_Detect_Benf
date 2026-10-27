@@ -64,7 +64,7 @@ export function AppointmentsList({
           {groups.slice(0, 3).map((g) => (
             <div key={g.id} className={cn("rounded-xl px-3 py-2", g.tone)}>
               <div className="num text-xl font-bold leading-tight">{g.items.length}</div>
-              <div className="truncate text-[11px] font-semibold opacity-90">{g.label}</div>
+              <div className="truncate text-xs font-semibold opacity-90">{g.label}</div>
             </div>
           ))}
         </div>
@@ -99,7 +99,7 @@ export function AppointmentsList({
                 })
               }
               aria-expanded={!isClosed}
-              className="flex w-full items-center gap-2 border-b border-line bg-sunken/50 px-4 py-2.5 text-start sm:px-5"
+              className="focus-ring flex min-h-12 w-full items-center gap-2 border-b border-line bg-sunken/50 px-4 py-2.5 text-start sm:px-5"
             >
               <span className={cn("grid size-7 place-items-center rounded-lg", g.tone)}>
                 <g.icon className="size-4" />
@@ -115,21 +115,24 @@ export function AppointmentsList({
                     const b = db.beneficiaries[a.nid];
                     const served = db.entries.find((e) => e.id === a.createdEntry);
                     return (
-                      <li key={a.id}>
+                      <li
+                        key={a.id}
+                        className={cn("border-s-4", g.id === "today" ? "border-ok bg-ok-soft/30" : g.id === "missed" ? "border-bad bg-bad-soft/30" : "border-transparent")}
+                      >
                         <button onClick={() => onOpen(a.nid)} className="group flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-sunken/50 sm:px-5">
                           <span className="grid w-14 shrink-0 place-items-center rounded-xl bg-sunken py-1.5 text-center leading-tight">
                             <span className="num text-lg font-bold">{dayFull(a.due).slice(0, 5)}</span>
-                            <span className="text-[10px] font-semibold text-muted">{weekday(a.due)}</span>
+                            <span className="text-[11px] font-semibold text-muted">{weekday(a.due)}</span>
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-1.5">
                               <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
                               <IdTypeTag type={b?.type} />
-                              <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-bold">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-xs font-bold">
                                 <span className="size-2 rounded-full" style={{ background: projectColor(db, a.project) }} />
                                 {projectName(db, a.project)}
                               </span>
-                              {a.attempt > 1 && <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">المحاولة {a.attempt}</span>}
+                              {a.attempt > 1 && <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-xs font-bold text-warn">المحاولة {a.attempt}</span>}
                             </span>
                             <span className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
                               <span className="num font-semibold tracking-wider text-ink/80">{a.nid}</span>

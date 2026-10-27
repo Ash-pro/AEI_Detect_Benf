@@ -62,21 +62,23 @@ export function QueueList({
     <Card className="animate-fade-up overflow-hidden">
       <div className="border-b border-line px-4 pb-3 pt-4 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-lg font-bold">
-            <ListOrdered className="size-5 text-brand" />
-            قائمة الانتظار — {mine.map((p) => projectName(db, p)).join(" و")}
+          <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold">
+            <ListOrdered className="size-5 shrink-0 text-brand" />
+            قائمة الانتظار
+            {mine.length === 1 && <span className="truncate text-base font-semibold text-muted">· {projectName(db, mine[0])}</span>}
           </h2>
           <span className="text-xs text-muted">مرتبة حسب الدور ووقت الاستقبال</span>
         </div>
 
         {mine.length > 1 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="scroll-fade -mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 sm:-mx-5 sm:px-5">
             {["ALL", ...mine].map((p) => (
               <button
                 key={p}
                 onClick={() => setProject(p)}
+                aria-pressed={project === p}
                 className={cn(
-                  "rounded-lg border px-3 py-1 text-sm font-bold",
+                  "focus-ring min-h-10 shrink-0 whitespace-nowrap rounded-xl border px-3.5 text-sm font-bold",
                   project === p ? "border-brand bg-brand-soft text-brand" : "border-line bg-surface text-muted hover:text-ink",
                 )}
               >
@@ -94,7 +96,7 @@ export function QueueList({
               aria-selected={tab === t.value}
               onClick={() => setTab(t.value)}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-bold transition",
+                "focus-ring flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-bold transition",
                 tab === t.value ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink",
               )}
             >
@@ -120,7 +122,8 @@ export function QueueList({
               item={item}
               db={db}
               now={now}
-              showProject={mine.length > 1}
+              showProject={mine.length > 1 && project === "ALL"}
+              showStatus={tab === "all" || item.status === "moved"}
               onPick={onPick}
               onUndo={item.status === "served" && canUndo(item.served, user.id) ? () => setUndo(item.served!) : undefined}
             />
@@ -143,6 +146,7 @@ function Row({
   db,
   now,
   showProject,
+  showStatus,
   onPick,
   onUndo,
 }: {
@@ -150,6 +154,8 @@ function Row({
   db: Db;
   now: number;
   showProject: boolean;
+  /** شارة الحالة: تكرار لاسم التبويب، فتظهر فقط في "الكل" أو للحالات المحوّلة */
+  showStatus: boolean;
   onPick: (i: QueueItem) => void;
   onUndo?: () => void;
 }) {
@@ -182,29 +188,29 @@ function Row({
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="truncate font-bold">{b?.name || "بدون اسم"}</span>
             <IdTypeTag type={b?.type} />
-            {showProject && <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-bold">{projectName(db, item.project)}</span>}
+            {showProject && <span className="rounded-md bg-sunken px-1.5 py-0.5 text-xs font-bold">{projectName(db, item.project)}</span>}
             {ref ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info" title={ref.note}>
+              <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-xs font-bold text-info" title={ref.note}>
                 <Stethoscope className="size-3" />
                 محوّلة من نقطة {ref.from ? projectName(db, ref.from) : userName(db, ref.by)}
               </span>
             ) : (
               item.reception.corrected &&
               !item.reception.corrected.from.length && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
+                <span className="inline-flex items-center gap-1 rounded-md bg-info-soft px-1.5 py-0.5 text-xs font-bold text-info">
                   <ArrowLeftRight className="size-3" />
                   تحويل من نقطة
                 </span>
               )
             )}
             {item.served?.noDonor && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
+              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-xs font-bold text-warn">
                 <CalendarClock className="size-3" />
                 بدون بت{appt ? ` · موعد ${dayFull(appt.due)}` : ""}
               </span>
             )}
             {item.movedFrom && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[11px] font-bold text-warn">
+              <span className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-xs font-bold text-warn">
                 <PenLine className="size-3" />
                 محوّلة من {item.movedFrom.map((p) => projectName(db, p)).join("، ")}
               </span>
@@ -217,7 +223,7 @@ function Row({
               الاستقبال <span className="num">{formatTime(item.reception.at)}</span>
             </span>
             {item.status === "wait" && (
-              <span className={cn("inline-flex items-center gap-1", waited >= 30 && "font-bold text-warn")}>
+              <span className={cn("inline-flex items-center gap-1", waited >= 120 ? "font-bold text-bad" : waited >= 30 && "font-bold text-warn")}>
                 <Clock className="size-3.5" />
                 ينتظر {minutesText(waited)}
               </span>
@@ -232,8 +238,8 @@ function Row({
         </span>
 
         <span className="flex shrink-0 items-center gap-1">
-          {item.status === "wait" && <span className="rounded-full bg-warn-soft px-2.5 py-1 text-xs font-bold text-warn">بانتظار</span>}
-          {item.status === "served" && <span className="rounded-full bg-ok-soft px-2.5 py-1 text-xs font-bold text-ok">خُدمت</span>}
+          {showStatus && item.status === "wait" && <span className="rounded-full bg-warn-soft px-2.5 py-1 text-xs font-bold text-warn">بانتظار</span>}
+          {showStatus && item.status === "served" && <span className="rounded-full bg-ok-soft px-2.5 py-1 text-xs font-bold text-ok">خُدمت</span>}
           {item.status === "moved" && (
             <span className="inline-flex items-center gap-1 rounded-full bg-sunken px-2.5 py-1 text-xs font-bold text-muted">
               <ArrowLeftRight className="size-3" />

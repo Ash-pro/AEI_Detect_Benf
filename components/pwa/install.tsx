@@ -105,7 +105,7 @@ export function PwaInstall() {
           </button>
           <button
             onClick={install}
-            className="focus-ring flex w-[54px] flex-col items-center gap-0.5 rounded-e-2xl bg-brand py-2.5 text-[11px] font-bold leading-tight text-brand-ink shadow-pop active:scale-[0.97]"
+            className="focus-ring flex w-[54px] flex-col items-center gap-0.5 rounded-e-2xl bg-brand py-2.5 text-xs font-bold leading-tight text-brand-ink shadow-pop active:scale-[0.97]"
             aria-label="تثبيت التطبيق على الجهاز"
           >
             <Download className="size-5" />

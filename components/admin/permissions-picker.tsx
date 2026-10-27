@@ -66,7 +66,7 @@ export function PermissionsPicker({ value, onChange }: { value: string[]; onChan
               )}
             >
               <span className={cn("block text-sm font-bold", on && "text-brand")}>{p.label}</span>
-              <span className="block text-[11px] leading-snug text-muted">{p.desc}</span>
+              <span className="block text-xs leading-snug text-muted">{p.desc}</span>
             </button>
           );
         })}
@@ -74,7 +74,7 @@ export function PermissionsPicker({ value, onChange }: { value: string[]; onChan
 
       {PERM_GROUPS.map((g) => (
         <div key={g.id} className="border-b border-line last:border-0">
-          <div className="px-4 pb-1 pt-3 text-[11px] font-bold tracking-wide text-muted">{g.label}</div>
+          <div className="px-4 pb-1 pt-3 text-xs font-bold tracking-wide text-muted">{g.label}</div>
           <ul>
             {PERMS.filter((p) => p.group === g.id).map((p) => {
               const Icon = ICONS[p.key];
@@ -89,7 +89,7 @@ export function PermissionsPicker({ value, onChange }: { value: string[]; onChan
                       <span className="flex flex-wrap items-center gap-1.5 text-sm font-bold">
                         {p.label}
                         {p.sensitive && (
-                          <span className="inline-flex items-center gap-0.5 rounded bg-warn-soft px-1.5 text-[10px] font-bold text-warn">
+                          <span className="inline-flex items-center gap-0.5 rounded bg-warn-soft px-1.5 text-[11px] font-bold text-warn">
                             <ShieldAlert className="size-3" />
                             تعديل بيانات
                           </span>
@@ -127,7 +127,7 @@ export function PermissionChips({ value, max }: { value: string[]; max?: number 
           <span
             key={p.key}
             className={cn(
-              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold",
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-bold",
               p.sensitive ? "bg-warn-soft text-warn" : "bg-sunken text-ink/80",
             )}
           >
@@ -136,7 +136,7 @@ export function PermissionChips({ value, max }: { value: string[]; max?: number 
           </span>
         );
       })}
-      {max && list.length > max && <span className="num rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-bold text-muted">+{list.length - max}</span>}
+      {max && list.length > max && <span className="num rounded-md bg-sunken px-1.5 py-0.5 text-xs font-bold text-muted">+{list.length - max}</span>}
     </span>
   );
 }

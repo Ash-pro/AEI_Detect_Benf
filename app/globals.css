@@ -93,3 +93,16 @@ html.is-busy, html.is-busy * { cursor: progress; }
   animation: skeleton-shine 1.3s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* شريط أفقي قابل للتمرير: تدرّج عند الطرف يدل على وجود عناصر إضافية، بدون شريط تمرير ظاهر */
+@utility scroll-fade {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+  padding-inline-end: 2.5rem;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+@utility no-fade {
+  -webkit-mask-image: none;
+  mask-image: none;
+}

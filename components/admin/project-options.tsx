@@ -23,7 +23,7 @@ export function ProjectOptionsButton({ project, onOpen, disabled }: { project: P
       onClick={onOpen}
       disabled={disabled}
       aria-label={`خيارات ${project.name}`}
-      className="focus-ring inline-flex min-h-9 flex-wrap items-center gap-1 rounded-lg border border-dashed border-line px-2 py-1 text-[11px] font-bold text-muted hover:border-brand hover:text-brand"
+      className="focus-ring inline-flex min-h-10 flex-wrap items-center gap-1 rounded-lg border border-dashed border-line px-2.5 py-1 text-xs font-bold text-muted hover:border-brand hover:text-brand"
     >
       {project.isDoctor && (
         <span className="inline-flex items-center gap-1 rounded bg-info-soft px-1.5 py-0.5 text-info">
