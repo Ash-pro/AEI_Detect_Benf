@@ -65,8 +65,10 @@ export default function AdminHome() {
   const hours = useMemo(() => hourly(dayList), [dayList]);
 
   const rows = s.projects.filter((x) => db.projects.find((pp) => pp.code === x.code)?.active || x.referred || x.served);
-  const totals = rows.reduce((a, r) => ({ referred: a.referred + r.referred, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
+  const totals = rows.reduce((a, r) => ({ referred: a.referred + r.referred, fromReception: a.fromReception + r.fromReception, fromPoints: a.fromPoints + r.fromPoints, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
     referred: 0,
+    fromReception: 0,
+    fromPoints: 0,
     served: 0,
     waiting: 0,
   });
@@ -86,8 +88,10 @@ export default function AdminHome() {
     if (pSort === "low") list.sort((a, b) => rate(a) - rate(b));
     return list;
   }, [rows, pq, pShow, pSort]);
-  const shownTotals = shown.reduce((a, r) => ({ referred: a.referred + r.referred, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
+  const shownTotals = shown.reduce((a, r) => ({ referred: a.referred + r.referred, fromReception: a.fromReception + r.fromReception, fromPoints: a.fromPoints + r.fromPoints, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
     referred: 0,
+    fromReception: 0,
+    fromPoints: 0,
     served: 0,
     waiting: 0,
   });
@@ -169,7 +173,7 @@ export default function AdminHome() {
                 onChange={setPSort}
                 options={[
                   { value: "order", label: "ترتيب المشاريع" },
-                  { value: "referred", label: "الأكثر توجيهاً" },
+                  { value: "referred", label: "الأكثر تحويلاً" },
                   { value: "served", label: "الأكثر خدمة" },
                   { value: "waiting", label: isToday ? "الأكثر انتظاراً" : "الأكثر غير مخدوم" },
                   { value: "low", label: "الأقل نسبة خدمة" },
@@ -196,7 +200,14 @@ export default function AdminHome() {
                       <span className="block truncate font-bold">{r.name}</span>
                       <span className="block">
                         <span className="num text-xs text-muted">
-                          موجّه <b className="text-ink">{r.referred}</b> · مخدوم <b className="text-ok">{r.served}</b>
+                          استقبال <b className="text-ink">{r.fromReception}</b>
+                          {r.fromPoints > 0 && (
+                            <>
+                              {" "}
+                              · نقاط <b className="text-info">{r.fromPoints}</b>
+                            </>
+                          )}{" "}
+                          · مخدوم <b className="text-ok">{r.served}</b>
                           {r.waiting > 0 && (
                             <>
                               {" "}
@@ -213,11 +224,16 @@ export default function AdminHome() {
               ))}
             </ul>
             <div className="hidden overflow-x-auto sm:block">
-              <table className="w-full min-w-[620px] text-sm">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead className="bg-sunken/60 text-xs text-muted">
                   <tr>
                     <th className="px-5 py-2.5 text-start font-semibold">المشروع</th>
-                    <th className="px-3 py-2.5 text-center font-semibold">موجّه</th>
+                    <th className="px-3 py-2.5 text-center font-semibold" title="حوّلها موظف الاستقبال للمشروع">
+                      من الاستقبال
+                    </th>
+                    <th className="px-3 py-2.5 text-center font-semibold" title="حوّلتها نقطة مشروع آخر، أو خدمتها النقطة مباشرة بدون تحويل">
+                      من النقاط
+                    </th>
                     <th className="px-3 py-2.5 text-center font-semibold">مخدوم</th>
                     <th className="px-3 py-2.5 text-center font-semibold">{isToday ? "بانتظار" : "لم تُخدم"}</th>
                     <th className="px-3 py-2.5 text-start font-semibold">نسبة الخدمة</th>
@@ -233,7 +249,7 @@ export default function AdminHome() {
                           {r.name}
                         </Link>
                         {center === "ALL" && (r.referred > 0 || r.served > 0) ? (
-                          <div className="mt-0.5 text-xs text-muted">
+                          <div className="mt-0.5 text-xs text-muted" title="محوّل / مخدوم في كل مركز">
                             غزة{" "}
                             <span className="num">
                               {r.byCenter.GAZA.referred}/{r.byCenter.GAZA.served}
@@ -249,7 +265,17 @@ export default function AdminHome() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="num px-3 py-3 text-center font-bold">{r.referred}</td>
+                      <td className="num px-3 py-3 text-center font-bold">{r.fromReception}</td>
+                      <td className="px-3 py-3 text-center" title={r.fromPoints ? `تحويل مسجّل من نقطة: ${r.pointReferrals} · خدمة مباشرة بدون تحويل: ${r.direct}` : undefined}>
+                        <span className={`num font-bold ${r.fromPoints ? "text-info" : "text-muted"}`}>{r.fromPoints}</span>
+                        {r.fromPoints > 0 && (
+                          <span className="num mt-0.5 block whitespace-nowrap text-xs font-medium text-muted">
+                            {r.pointReferrals ? `تحويل ${r.pointReferrals}` : ""}
+                            {r.pointReferrals && r.direct ? " · " : ""}
+                            {r.direct ? `مباشر ${r.direct}` : ""}
+                          </span>
+                        )}
+                      </td>
                       <td className="num px-3 py-3 text-center font-bold text-ok">{r.served}</td>
                       <td className="px-3 py-3 text-center">
                         {r.waiting ? (
@@ -282,7 +308,8 @@ export default function AdminHome() {
                   <tfoot className="border-t-2 border-line bg-sunken/50 font-bold">
                     <tr>
                       <td className="px-5 py-3">{shown.length < rows.length ? "إجمالي المعروض" : "الإجمالي"}</td>
-                      <td className="num px-3 py-3 text-center">{shownTotals.referred}</td>
+                      <td className="num px-3 py-3 text-center">{shownTotals.fromReception}</td>
+                      <td className="num px-3 py-3 text-center text-info">{shownTotals.fromPoints}</td>
                       <td className="num px-3 py-3 text-center text-ok">{shownTotals.served}</td>
                       <td className="num px-3 py-3 text-center text-warn">{shownTotals.waiting}</td>
                       <td className="px-3 py-3">
@@ -296,8 +323,8 @@ export default function AdminHome() {
             </div>
             <p className="flex gap-2 border-t border-line px-5 py-3 text-xs leading-relaxed text-muted">
               <Info className="size-4 shrink-0" />
-              موجّه: حوّلها الاستقبال للمشروع. مخدوم: سجّلتها نقطة المشروع. نسبة الخدمة = المخدوم ÷ الموجّه، وقد تتجاوز 100% إذا خدمت النقطة حالات لم تمر على
-              الاستقبال.
+              من الاستقبال: حوّلها موظف الاستقبال. من النقاط: حوّلتها نقطة مشروع آخر (مثل تحويل الطبيب)، أو خدمتها النقطة مباشرة بدون تحويل. نسبة الخدمة =
+              المخدوم ÷ (من الاستقبال + من النقاط)، فتصل 100% عندما يُخدم كل المحوّلين.
             </p>
           </Card>
 

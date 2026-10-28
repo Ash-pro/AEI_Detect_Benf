@@ -39,6 +39,8 @@ export default function ReportsPage() {
         code: p.code,
         name: p.name,
         referred: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.referred ?? 0), 0),
+        fromReception: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.fromReception ?? 0), 0),
+        fromPoints: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.fromPoints ?? 0), 0),
         served: stats.reduce((n, s) => n + (s.projects.find((x) => x.code === p.code)?.served ?? 0), 0),
       }))
       .filter((p) => p.referred || p.served)
@@ -107,7 +109,7 @@ export default function ReportsPage() {
           suffix={pct === null ? undefined : "%"}
           tone={pct === null ? "ink" : pct >= 80 ? "ok" : "warn"}
           icon={Gauge}
-          hint={`${totals.served.toLocaleString("en-US")} من ${totals.referred.toLocaleString("en-US")} موجّه`}
+          hint={`${totals.served.toLocaleString("en-US")} من ${totals.referred.toLocaleString("en-US")} محوّل`}
         />
       </div>
 
@@ -154,7 +156,7 @@ export default function ReportsPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card className="overflow-hidden">
-          <SectionHead title="المشاريع خلال الشهر" icon={LayoutList} sub="موجّه من الاستقبال · مخدوم في النقطة · نسبة الخدمة" />
+          <SectionHead title="المشاريع خلال الشهر" icon={LayoutList} sub="محوّل من الاستقبال ومن النقاط · مخدوم في النقطة · نسبة الخدمة" />
           <TableToolbar>
             <SearchBox value={pq} onChange={setPq} placeholder="بحث عن مشروع" />
             <FilterSelect
@@ -163,7 +165,7 @@ export default function ReportsPage() {
               all="referred"
               onChange={setPSort}
               options={[
-                { value: "referred", label: "الأكثر توجيهاً" },
+                { value: "referred", label: "الأكثر تحويلاً" },
                 { value: "served", label: "الأكثر خدمة" },
                 { value: "low", label: "الأقل نسبة خدمة" },
                 { value: "high", label: "الأعلى نسبة خدمة" },
@@ -179,7 +181,7 @@ export default function ReportsPage() {
                     {p.name}
                   </span>
                   <span className="num text-muted">
-                    موجّه <b className="text-ink">{p.referred}</b> · مخدوم <b className="text-ok">{p.served}</b>
+                    استقبال <b className="text-ink">{p.fromReception}</b> · نقاط <b className="text-info">{p.fromPoints}</b> · مخدوم <b className="text-ok">{p.served}</b>
                   </span>
                 </div>
                 <CoverageBar served={p.served} referred={p.referred} compact />

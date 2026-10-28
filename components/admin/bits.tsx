@@ -278,7 +278,7 @@ export function Bar({ value, max, tone = "brand", color }: { value: number; max:
   );
 }
 
-/** نسبة الخدمة = مخدوم في النقطة ÷ موجّه من الاستقبال */
+/** نسبة الخدمة = مخدوم في النقطة ÷ كل المحوّل (من الاستقبال + من النقاط) */
 export function coverage(served: number, referred: number): number | null {
   return referred ? Math.round((served / referred) * 100) : null;
 }
@@ -295,7 +295,7 @@ export function CoverageBar({ served, referred, compact }: { served: number; ref
       title={
         over
           ? `خدمت النقطة ${served} حالة مقابل ${referred} محوّلة من الاستقبال — الفرق حالات خُدمت دون المرور على الاستقبال`
-          : "نسبة الخدمة: المخدوم في النقطة من الموجّه من الاستقبال"
+          : "نسبة الخدمة: المخدوم من كل المحوّل (من الاستقبال + من النقاط)"
       }
     >
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-sunken">

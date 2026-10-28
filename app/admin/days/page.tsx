@@ -99,7 +99,7 @@ export default function DaysPage() {
             onChange={setMode}
             options={[
               { value: "served", label: "مخدوم" },
-              { value: "referred", label: "موجّه" },
+              { value: "referred", label: "محوّل" },
             ]}
           />
         </div>

@@ -126,7 +126,7 @@ function DayInner() {
       )}
       <WaitingDialog open={waitOpen} onClose={() => setWaitOpen(false)} date={date} center={center} project={project || undefined} />
 
-      {/* المشاريع: فلتر مع موجّه/مخدوم */}
+      {/* المشاريع: فلتر مع محوّل/مخدوم */}
       {projRows.length > 0 && (
         <div className="scroll-fade -mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:no-fade sm:mx-0 sm:flex-wrap sm:px-0">
           <button
@@ -156,7 +156,8 @@ function DayInner() {
                     {p.name}
                   </span>
                   <span className="num block text-xs font-semibold text-muted">
-                    موجّه {p.referred} · مخدوم {p.served}
+                    محوّل {p.referred}
+                    {p.fromPoints ? ` (نقاط ${p.fromPoints})` : ""} · مخدوم {p.served}
                     {p.waiting ? ` · بانتظار ${p.waiting}` : ""}
                   </span>
                 </span>

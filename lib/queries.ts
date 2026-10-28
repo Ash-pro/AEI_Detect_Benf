@@ -130,16 +130,28 @@ export function staffShareText(db: Db, user: SessionUser, center: CenterCode, s:
 
 /* ===== إحصائيات الأدمن ===== */
 
-export interface ProjectRow {
-  code: string;
-  name: string;
+export interface ProjectCounts {
+  /** كل المحوّل للمشروع = من الاستقبال + من النقاط (أساس نسبة الخدمة) */
   referred: number;
+  /** حوّلها موظف الاستقبال */
+  fromReception: number;
+  /** من النقاط = تحويل مسجّل من نقطة (طبيب أو تحويل لمشروع آخر) + خدمة بدون تحويل للمشروع */
+  fromPoints: number;
+  /** منها: تحويل مسجّل من نقطة مشروع آخر */
+  pointReferrals: number;
+  /** منها: خدمتها النقطة بدون أي تحويل لهذا المشروع اليوم */
+  direct: number;
   served: number;
   /** ما زال بانتظار الخدمة */
   waiting: number;
   /** آخر رقم دور (مجموع المراكز عند "الكل") */
   lastQueue: number;
-  byCenter: Record<CenterCode, { referred: number; served: number; waiting: number; lastQueue: number }>;
+}
+
+export interface ProjectRow extends ProjectCounts {
+  code: string;
+  name: string;
+  byCenter: Record<CenterCode, ProjectCounts>;
 }
 
 export interface DayStats {
@@ -156,25 +168,45 @@ export function dayStats(db: Db, date: string, center: CenterFilter): DayStats {
   const list = filterCenter(db.entries.filter((e) => e.date === date), center);
   const rec = list.filter((e) => e.kind === "RECEPTION");
   const pt = list.filter((e) => e.kind === "POINT");
+  const pointUsers = new Set(db.users.filter((u) => u.role === "POINT").map((u) => u.id));
+  const zero = (): ProjectCounts => ({ referred: 0, fromReception: 0, fromPoints: 0, pointReferrals: 0, direct: 0, served: 0, waiting: 0, lastQueue: 0 });
   const projects = allProjects(db).map((p) => {
     const centers: CenterCode[] = center === "ALL" ? ["GAZA", "KHY"] : [center];
-    const byCenter = {
-      GAZA: { referred: 0, served: 0, waiting: 0, lastQueue: 0 },
-      KHY: { referred: 0, served: 0, waiting: 0, lastQueue: 0 },
-    } as ProjectRow["byCenter"];
+    const byCenter = { GAZA: zero(), KHY: zero() } as ProjectRow["byCenter"];
     centers.forEach((c) => {
-      byCenter[c].waiting = projectQueue(db, c, p.code, date).filter((x) => x.status === "wait").length;
-      byCenter[c].lastQueue = lastNumber(db, c, p.code, date);
+      const b = byCenter[c];
+      // أدوار المشروع اليوم: كل حالة حُوّلت له (من الاستقبال أو من نقطة)
+      const items = projectQueue(db, c, p.code, date).filter((x) => x.status !== "moved");
+      const matched = new Set<string>();
+      items.forEach((x) => {
+        const byPoint = Boolean(x.reception.referrals?.[p.code]) || pointUsers.has(x.reception.userId);
+        if (byPoint) b.pointReferrals++;
+        else b.fromReception++;
+        if (x.status === "wait") b.waiting++;
+        if (x.served) matched.add(x.served.id);
+      });
+      // الخدمات في النقطة: ما لم يُطابق أي تحويل لهذا المشروع = خدمة مباشرة من النقطة
+      pt.forEach((e) => {
+        if (e.center !== c || !e.projects.includes(p.code)) return;
+        b.served++;
+        if (!matched.has(e.id)) b.direct++;
+      });
+      b.fromPoints = b.pointReferrals + b.direct;
+      b.referred = b.fromReception + b.fromPoints;
+      b.lastQueue = lastNumber(db, c, p.code, date);
     });
-    rec.forEach((e) => e.projects.includes(p.code) && byCenter[e.center].referred++);
-    pt.forEach((e) => e.projects.includes(p.code) && byCenter[e.center].served++);
+    const sum = (k: keyof ProjectCounts) => byCenter.GAZA[k] + byCenter.KHY[k];
     return {
       code: p.code,
       name: p.name,
-      referred: byCenter.GAZA.referred + byCenter.KHY.referred,
-      served: byCenter.GAZA.served + byCenter.KHY.served,
-      waiting: byCenter.GAZA.waiting + byCenter.KHY.waiting,
-      lastQueue: byCenter.GAZA.lastQueue + byCenter.KHY.lastQueue,
+      referred: sum("referred"),
+      fromReception: sum("fromReception"),
+      fromPoints: sum("fromPoints"),
+      pointReferrals: sum("pointReferrals"),
+      direct: sum("direct"),
+      served: sum("served"),
+      waiting: sum("waiting"),
+      lastQueue: sum("lastQueue"),
       byCenter,
     };
   });
@@ -218,9 +250,15 @@ export function adminShareText(db: Db, s: DayStats, center: CenterFilter): strin
     `حالات الاستقبال: ${s.reception} (جديدة: ${s.receptionNew})`,
     `حالات النقاط: ${s.point}`,
     "",
-    "حسب المشروع (موجّه / مخدوم / بانتظار):",
+    "حسب المشروع (محوّل: استقبال + نقاط / مخدوم / بانتظار / نسبة الخدمة):",
   ];
-  s.projects.filter((p) => p.referred || p.served).forEach((p) => lines.push(`• ${p.name}: ${p.referred} / ${p.served} / ${p.waiting}`));
+  s.projects
+    .filter((p) => p.referred || p.served)
+    .forEach((p) =>
+      lines.push(
+        `• ${p.name}: ${p.referred} (${p.fromReception} + ${p.fromPoints}) / ${p.served} / ${p.waiting}${p.referred ? ` / ${Math.round((p.served / p.referred) * 100)}%` : ""}`,
+      ),
+    );
   return lines.join("\n");
 }
 
