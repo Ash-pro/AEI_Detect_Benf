@@ -105,7 +105,7 @@ export async function loadCounters(sb: SupabaseClient, fromDay: string): Promise
 /* ===== الإدخالات ===== */
 
 const ENTRY_SELECT =
-  "id, nid, center_code, user_id, kind, at, day, is_new, queue_ref, corrected_by, corrected_at, corrected_from, no_donor, no_donor_reason, entry_projects(project_code, queue_no, status, referred_by, referred_from, ref_note), beneficiaries(nid, name, id_type, created_at)";
+  "id, nid, center_code, user_id, kind, at, day, is_new, queue_ref, corrected_by, corrected_at, corrected_from, no_donor, no_donor_reason, entry_projects(project_code, queue_no, status, referred_by, referred_from, ref_note, left_at, left_by), beneficiaries(nid, name, id_type, created_at)";
 
 interface EntryRow {
   id: string; nid: string; center_code: CenterCode; user_id: string; kind: Entry["kind"]; at: string; day: string; is_new: boolean;
@@ -114,6 +114,7 @@ interface EntryRow {
   entry_projects: {
     project_code: string; queue_no: number | null; status: "active" | "moved";
     referred_by: string | null; referred_from: string | null; ref_note: string | null;
+    left_at?: string | null; left_by?: string | null;
   }[];
   beneficiaries: { nid: string; name: string; id_type: IdType | null; created_at: string } | null;
 }
@@ -139,6 +140,10 @@ function toBatch(rows: EntryRow[], order: Map<string, number>): EntryBatch {
     active.forEach((p) => {
       if (p.referred_by) referrals[p.project_code] = { by: p.referred_by, from: p.referred_from ?? undefined, note: p.ref_note ?? undefined };
     });
+    const left: Record<string, { at: string; by?: string }> = {};
+    active.forEach((p) => {
+      if (p.left_at) left[p.project_code] = { at: p.left_at, by: p.left_by ?? undefined };
+    });
     return {
       id: r.id,
       nid: r.nid,
@@ -155,6 +160,7 @@ function toBatch(rows: EntryRow[], order: Map<string, number>): EntryBatch {
       ...(r.queue_ref ? { queueRef: r.queue_ref } : {}),
       ...(r.no_donor ? { noDonor: { reason: r.no_donor_reason ?? undefined } } : {}),
       ...(Object.keys(referrals).length ? { referrals } : {}),
+      ...(Object.keys(left).length ? { left } : {}),
     };
   });
   return { entries, beneficiaries };

@@ -144,6 +144,8 @@ export interface ProjectCounts {
   served: number;
   /** ما زال بانتظار الخدمة */
   waiting: number;
+  /** حضرت ولم تُخدم (رُحّلت يدوياً أو تلقائياً بعد 4:00) */
+  left: number;
   /** آخر رقم دور (مجموع المراكز عند "الكل") */
   lastQueue: number;
 }
@@ -169,7 +171,7 @@ export function dayStats(db: Db, date: string, center: CenterFilter): DayStats {
   const rec = list.filter((e) => e.kind === "RECEPTION");
   const pt = list.filter((e) => e.kind === "POINT");
   const pointUsers = new Set(db.users.filter((u) => u.role === "POINT").map((u) => u.id));
-  const zero = (): ProjectCounts => ({ referred: 0, fromReception: 0, fromPoints: 0, pointReferrals: 0, direct: 0, served: 0, waiting: 0, lastQueue: 0 });
+  const zero = (): ProjectCounts => ({ referred: 0, fromReception: 0, fromPoints: 0, pointReferrals: 0, direct: 0, served: 0, waiting: 0, left: 0, lastQueue: 0 });
   const projects = allProjects(db).map((p) => {
     const centers: CenterCode[] = center === "ALL" ? ["GAZA", "KHY"] : [center];
     const byCenter = { GAZA: zero(), KHY: zero() } as ProjectRow["byCenter"];
@@ -183,6 +185,7 @@ export function dayStats(db: Db, date: string, center: CenterFilter): DayStats {
         if (byPoint) b.pointReferrals++;
         else b.fromReception++;
         if (x.status === "wait") b.waiting++;
+        if (x.status === "left") b.left++;
         if (x.served) matched.add(x.served.id);
       });
       // الخدمات في النقطة: ما لم يُطابق أي تحويل لهذا المشروع = خدمة مباشرة من النقطة
@@ -206,6 +209,7 @@ export function dayStats(db: Db, date: string, center: CenterFilter): DayStats {
       direct: sum("direct"),
       served: sum("served"),
       waiting: sum("waiting"),
+      left: sum("left"),
       lastQueue: sum("lastQueue"),
       byCenter,
     };
@@ -256,7 +260,7 @@ export function adminShareText(db: Db, s: DayStats, center: CenterFilter): strin
     .filter((p) => p.referred || p.served)
     .forEach((p) =>
       lines.push(
-        `• ${p.name}: ${p.referred} (${p.fromReception} + ${p.fromPoints}) / ${p.served} / ${p.waiting}${p.referred ? ` / ${Math.round((p.served / p.referred) * 100)}%` : ""}`,
+        `• ${p.name}: ${p.referred} (${p.fromReception} + ${p.fromPoints}) / ${p.served} / ${p.waiting}${p.left ? ` (+ لم تُخدم ${p.left})` : ""}${p.referred ? ` / ${Math.round((p.served / p.referred) * 100)}%` : ""}`,
       ),
     );
   return lines.join("\n");

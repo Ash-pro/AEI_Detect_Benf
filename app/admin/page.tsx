@@ -25,7 +25,7 @@ import {
 } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { ShareDialog } from "@/components/entry/share-dialog";
-import { WaitingDialog } from "@/components/admin/waiting-dialog";
+import { WaitingDialog, type WaitMode } from "@/components/admin/waiting-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { useStore } from "@/lib/store";
 import { adminShareText, type CenterFilter, dayStats, filterCenter, hourly, workedDays } from "@/lib/queries";
@@ -41,7 +41,7 @@ export default function AdminHome() {
   const [center, setCenter] = useState<CenterFilter>("ALL");
   const [share, setShare] = useState(false);
   // نافذة المنتظرين: "ALL" أو رمز مشروع
-  const [waitOpen, setWaitOpen] = useState<string | null>(null);
+  const [waitOpen, setWaitOpen] = useState<{ project?: string; mode: WaitMode } | null>(null);
   const isToday = date === todayKey();
   // فلاتر جدول المشاريع وآخر الإدخالات
   const [pq, setPq] = useState("");
@@ -65,8 +65,9 @@ export default function AdminHome() {
   const hours = useMemo(() => hourly(dayList), [dayList]);
 
   const rows = s.projects.filter((x) => db.projects.find((pp) => pp.code === x.code)?.active || x.referred || x.served);
-  const totals = rows.reduce((a, r) => ({ referred: a.referred + r.referred, fromReception: a.fromReception + r.fromReception, fromPoints: a.fromPoints + r.fromPoints, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
+  const totals = rows.reduce((a, r) => ({ referred: a.referred + r.referred, fromReception: a.fromReception + r.fromReception, fromPoints: a.fromPoints + r.fromPoints, served: a.served + r.served, waiting: a.waiting + r.waiting, left: a.left + r.left }), {
     referred: 0,
+    left: 0,
     fromReception: 0,
     fromPoints: 0,
     served: 0,
@@ -88,8 +89,9 @@ export default function AdminHome() {
     if (pSort === "low") list.sort((a, b) => rate(a) - rate(b));
     return list;
   }, [rows, pq, pShow, pSort]);
-  const shownTotals = shown.reduce((a, r) => ({ referred: a.referred + r.referred, fromReception: a.fromReception + r.fromReception, fromPoints: a.fromPoints + r.fromPoints, served: a.served + r.served, waiting: a.waiting + r.waiting }), {
+  const shownTotals = shown.reduce((a, r) => ({ referred: a.referred + r.referred, fromReception: a.fromReception + r.fromReception, fromPoints: a.fromPoints + r.fromPoints, served: a.served + r.served, waiting: a.waiting + r.waiting, left: a.left + r.left }), {
     referred: 0,
+    left: 0,
     fromReception: 0,
     fromPoints: 0,
     served: 0,
@@ -138,13 +140,13 @@ export default function AdminHome() {
         <StatCard label="حالات جديدة" value={s.receptionNew} delta={p ? s.receptionNew - p.receptionNew : null} tone="info" icon={UserPlus} />
         <StatCard label="خُدمت في النقاط" value={s.point} delta={p ? s.point - p.point : null} tone="ok" icon={Stethoscope} />
         <StatCard
-          label={isToday ? "بانتظار الخدمة" : "لم تُخدم"}
-          value={totals.waiting}
-          tone={totals.waiting ? "warn" : "ink"}
+          label={isToday ? "بانتظار الخدمة" : "حضرت ولم تُخدم"}
+          value={isToday ? totals.waiting : totals.waiting + totals.left}
+          tone={(isToday ? totals.waiting : totals.left) ? "warn" : "ink"}
           icon={Hourglass}
-          hint={pct === null ? "لا تحويلات" : `نسبة الخدمة ${pct}%`}
-          onClick={() => setWaitOpen("ALL")}
-          action={totals.waiting ? "عرض القائمة" : undefined}
+          hint={isToday && totals.left ? `حضرت ولم تُخدم ${totals.left}` : pct === null ? "لا تحويلات" : `نسبة الخدمة ${pct}%`}
+          onClick={() => setWaitOpen({ mode: isToday && (totals.waiting || !totals.left) ? "wait" : "left" })}
+          action={totals.waiting || totals.left ? "عرض القائمة" : undefined}
         />
       </div>
 
@@ -212,6 +214,12 @@ export default function AdminHome() {
                             <>
                               {" "}
                               · <b className="text-warn">{r.waiting}</b> بانتظار
+                            </>
+                          )}
+                          {r.left > 0 && (
+                            <>
+                              {" "}
+                              · <b className="text-bad">{r.left}</b> لم تُخدم
                             </>
                           )}
                         </span>
@@ -282,7 +290,7 @@ export default function AdminHome() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setWaitOpen(r.code);
+                              setWaitOpen({ project: r.code, mode: "wait" });
                             }}
                             title={`عرض المنتظرين في ${r.name}`}
                             className="focus-ring num inline-flex min-h-9 min-w-10 items-center justify-center rounded-lg bg-warn-soft px-2 font-bold text-warn underline-offset-2 hover:underline hover:ring-2 hover:ring-warn/30"
@@ -291,6 +299,18 @@ export default function AdminHome() {
                           </button>
                         ) : (
                           <span className="num inline-block min-w-8 rounded-md px-1.5 py-0.5 font-bold text-muted">0</span>
+                        )}
+                        {r.left > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setWaitOpen({ project: r.code, mode: "left" });
+                            }}
+                            title={`حضرت ولم تُخدم في ${r.name}`}
+                            className="focus-ring num mt-1 block w-full whitespace-nowrap rounded-md px-1 text-xs font-bold text-bad hover:underline"
+                          >
+                            لم تُخدم {r.left}
+                          </button>
                         )}
                       </td>
                       <td className="px-3 py-3">
@@ -311,7 +331,10 @@ export default function AdminHome() {
                       <td className="num px-3 py-3 text-center">{shownTotals.fromReception}</td>
                       <td className="num px-3 py-3 text-center text-info">{shownTotals.fromPoints}</td>
                       <td className="num px-3 py-3 text-center text-ok">{shownTotals.served}</td>
-                      <td className="num px-3 py-3 text-center text-warn">{shownTotals.waiting}</td>
+                      <td className="num px-3 py-3 text-center text-warn">
+                        {shownTotals.waiting}
+                        {shownTotals.left > 0 && <span className="block text-xs text-bad">لم تُخدم {shownTotals.left}</span>}
+                      </td>
                       <td className="px-3 py-3">
                         <CoverageBar served={shownTotals.served} referred={shownTotals.referred} />
                       </td>
@@ -413,10 +436,11 @@ export default function AdminHome() {
 
       <WaitingDialog
         open={waitOpen !== null}
+        mode={waitOpen?.mode}
         onClose={() => setWaitOpen(null)}
         date={date}
         center={center}
-        project={waitOpen && waitOpen !== "ALL" ? waitOpen : undefined}
+        project={waitOpen?.project}
       />
       <ShareDialog open={share} onClose={() => setShare(false)} title="مشاركة ملخص اليوم" text={adminShareText(db, s, center)} />
     </>

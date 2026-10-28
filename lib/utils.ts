@@ -56,6 +56,14 @@ export function dateKey(iso: string | Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
+/** الدقائق منذ منتصف الليل بتوقيت غزة */
+export function gazaMinutes(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const h = Number(parts.find((x) => x.type === "hour")?.value ?? 0);
+  const m = Number(parts.find((x) => x.type === "minute")?.value ?? 0);
+  return h * 60 + m;
+}
+
 export function todayKey(): string {
   return dateKey(new Date());
 }

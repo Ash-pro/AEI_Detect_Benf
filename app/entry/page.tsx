@@ -16,7 +16,7 @@ import { AppointmentsList } from "@/components/entry/appointments-list";
 import { UndoEntryDialog, canUndo } from "@/components/entry/undo-dialog";
 import { DoctorReferDialog, NoDonorDialog, PointExtras } from "@/components/entry/point-extras";
 import { apptStatus, apptWhen, appointmentOf, deferAllowed, openAppointments } from "@/lib/appointments";
-import { dayFull } from "@/lib/utils";
+import { dayFull, dayNum, weekday } from "@/lib/utils";
 import { DayLog } from "@/components/entry/day-log";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ import {
   type StaffStats,
   visibleHistory,
 } from "@/lib/queries";
-import { idTypeLabel, pointQueue, type QueueItem, waitingCount } from "@/lib/queue";
+import { idTypeLabel, leftOpen, pointQueue, type QueueItem, waitingCount } from "@/lib/queue";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import type { Db, Entry, IdType } from "@/lib/types";
 import { cn, formatTime, normalizeDigits, storageGet, storageSet, todayKey } from "@/lib/utils";
@@ -172,7 +172,8 @@ function EntryScreen() {
 
   /** اختيار حالة من قائمة الانتظار */
   function pick(item: QueueItem) {
-    const ref = item.status === "wait" ? item : null;
+    // حالة رُحّلت اليوم ثم عادت: تبقى مربوطة بدورها
+    const ref = item.status === "wait" || (item.status === "left" && item.reception.date === today) ? item : null;
     setQueueRef(ref);
     setView("entry");
     setRaw(item.reception.nid);
@@ -273,6 +274,29 @@ function EntryScreen() {
     );
   }
   const myPointToday = todayMine.filter((e) => e.kind === "POINT");
+  // حضرت سابقاً ولم تُخدم: الاستقبال يرى كل المشاريع، والنقطة ترى مشاريعها
+  const leftHere = useMemo(
+    () => (nid ? leftOpen(db, c, isPoint ? u.projects : db.projects.map((p) => p.code)).filter((x) => x.reception.nid === nid && x.reception.date !== today) : []),
+    [db, nid, c, isPoint, u.projects, today],
+  );
+  const leftLine = leftHere.length ? (
+    <StatusLine tone="bad" icon={<CalendarDays className="size-5" />}>
+      حضرت ولم تُخدم:{" "}
+      {leftHere.map((x, i) => (
+        <span key={x.project + x.reception.id}>
+          {i > 0 && "، "}
+          {projectName(db, x.project)} ({weekday(x.reception.date)} <span className="num">{dayNum(x.reception.date)}</span>)
+        </span>
+      ))}
+      {isPoint ? " — يمكن خدمتها اليوم" : " — حوّلها اليوم لتُخدم"}
+    </StatusLine>
+  ) : null;
+  if (leftLine) status = (
+    <>
+      {status}
+      {leftLine}
+    </>
+  );
 
   const allDone = isPoint && u.projects.length > 0 && u.projects.every((p) => pointDoneToday.has(p));
   // مشاريعي التي تسمح بالخدمة بدون تطبيق الممول هنا ولم تُخدم فيها الحالة اليوم

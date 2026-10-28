@@ -81,6 +81,10 @@ export interface Ctx {
   /** النقطة: تحويل الحالة لمشروع طبيب (إضافي، لا يلغي تحويلها الحالي) */
   referToDoctor: (input: DoctorReferInput) => Promise<{ error?: string; queueNo?: number; entryId?: string }>;
   cancelDoctorReferral: (entryId: string, project: string) => Promise<string | null>;
+  /** ترحيل المنتظرين اليوم في مشاريع الموظف إلى "حضرت ولم تُخدم" (بعد 2:20 ظهراً) */
+  markLeft: (projects: string[]) => Promise<{ n?: number; error?: string }>;
+  /** إرجاع دور مُرحّل إلى الانتظار */
+  unmarkLeft: (entryId: string, project: string) => Promise<string | null>;
   /** النقطة: خدمة بدون تطبيق الممول + موعد */
   serveWithoutDonor: (input: NoDonorInput) => Promise<{ error?: string; entryId?: string; due?: string; attempt?: number }>;
 
@@ -542,6 +546,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [rpc, after],
   );
 
+  const markLeft = useCallback(
+    async (projects: string[]) => {
+      const c = centerRef.current;
+      if (!c) return { error: "انتهت الجلسة، سجّل الدخول من جديد" };
+      const r = await rpc<number>("mark_left", { p_center: c, p_projects: projects });
+      if (r.error) return { error: r.error };
+      await refreshToday();
+      return { n: r.data ?? 0 };
+    },
+    [rpc, refreshToday],
+  );
+
+  const unmarkLeft = useCallback(
+    async (entryId: string, project: string) => {
+      const r = await rpc("unmark_left", { p_entry: entryId, p_project: project });
+      if (r.error) return r.error;
+      await refreshToday();
+      return null;
+    },
+    [rpc, refreshToday],
+  );
+
   const serveWithoutDonor = useCallback(
     async (input: NoDonorInput) => {
       const c = centerRef.current;
@@ -674,15 +700,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         {
           ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
           addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
-          referToDoctor, cancelDoctorReferral, serveWithoutDonor,
+          referToDoctor, cancelDoctorReferral, serveWithoutDonor, markLeft, unmarkLeft,
           saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, saveProjectOptions,
         },
         ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry",
-          "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor",
+          "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "markLeft", "unmarkLeft",
           "saveUser", "deleteUser", "saveProject", "moveProject", "reorderProjects", "renameCenter", "saveSettings", "saveProjectOptions"],
       ),
     [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
-      referToDoctor, cancelDoctorReferral, serveWithoutDonor,
+      referToDoctor, cancelDoctorReferral, serveWithoutDonor, markLeft, unmarkLeft,
       saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, saveProjectOptions],
   );
 

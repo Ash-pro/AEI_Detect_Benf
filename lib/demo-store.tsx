@@ -6,7 +6,7 @@ import { tracked } from "./pending";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Appointment, Beneficiary, CenterCode, Db, Entry, IdType, Project, SessionUser, Settings, User } from "./types";
 import { DB_VERSION, seedDb } from "./mock-data";
-import { assignQueue } from "./queue";
+import { assignQueue, canMarkLeft, LEAVE_FROM_LABEL, projectQueue } from "./queue";
 import { nextColor, withColors } from "./project-colors";
 import { addDays, storageGet, storageSet, todayKey, uuid } from "./utils";
 import { isStaff } from "./roles";
@@ -35,7 +35,7 @@ const strip = (u: User): SessionUser => {
   return rest;
 };
 
-const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "reorderProjects", "renameCenter", "saveSettings", "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "saveProjectOptions"];
+const KEYS: (keyof Ctx)[] = ["login", "lookup", "refresh", "addEntry", "updateBeneficiary", "updateEntryProjects", "deleteEntry", "correctRouting", "referFromPoint", "moveEntry", "saveUser", "deleteUser", "saveProject", "moveProject", "reorderProjects", "renameCenter", "saveSettings", "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "saveProjectOptions", "markLeft", "unmarkLeft"];
 const LATENCY = 450;
 
 /** مثل قاعدة البيانات: تعديل توجيه الاستقبال لا يحذف تحويلات الطبيب التي أضافتها النقاط */
@@ -429,6 +429,70 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     [db, user, center, log],
   );
 
+  /* مثل mark_left في قاعدة البيانات */
+  const markLeft = useCallback(
+    (projects: string[]): { n?: number; error?: string } => {
+      if (user?.role !== "POINT") return { error: "الترحيل من نقاط المشاريع فقط" };
+      if (!center) return { error: "انتهت الجلسة، سجّل الدخول من جديد" };
+      if (projects.some((p) => !user.projects.includes(p))) return { error: "لا يمكنك الترحيل إلا في مشاريعك" };
+      if (!canMarkLeft()) return { error: `الترحيل متاح بعد الساعة ${LEAVE_FROM_LABEL}` };
+      const today = todayKey();
+      const at = new Date().toISOString();
+      const hits = new Map<string, string[]>();
+      projects.forEach((p) =>
+        projectQueue(db, center, p, today)
+          .filter((x) => x.status === "wait")
+          .forEach((x) => hits.set(x.reception.id, [...(hits.get(x.reception.id) ?? []), p])),
+      );
+      const n = [...hits.values()].reduce((a, l) => a + l.length, 0);
+      if (n)
+        setDb((d) =>
+          log(
+            {
+              ...d,
+              entries: d.entries.map((e) => {
+                const ps = hits.get(e.id);
+                if (!ps) return e;
+                const left = { ...e.left };
+                ps.forEach((p) => (left[p] = { at, by: user.id }));
+                return { ...e, left };
+              }),
+            },
+            "ترحيل لم تُخدم",
+            `${projects.join("، ")} · ${n} حالة`,
+          ),
+        );
+      return { n };
+    },
+    [db, user, center, log],
+  );
+
+  const unmarkLeft = useCallback(
+    (entryId: string, project: string): string | null => {
+      const e = db.entries.find((x) => x.id === entryId);
+      if (!e?.left?.[project]) return "هذا الدور غير مُرحّل";
+      const admin = user?.role === "ADMIN" || user?.permissions?.includes("edit_entries");
+      if (!admin && !(user?.role === "POINT" && user.projects.includes(project) && e.date === todayKey())) return "لا تملك صلاحية إرجاع هذا الدور";
+      setDb((d) =>
+        log(
+          {
+            ...d,
+            entries: d.entries.map((x) => {
+              if (x.id !== entryId) return x;
+              const left = { ...x.left };
+              delete left[project];
+              return { ...x, left: Object.keys(left).length ? left : undefined };
+            }),
+          },
+          "إرجاع للانتظار",
+          `${e.nid} · ${project}`,
+        ),
+      );
+      return null;
+    },
+    [db, user, log],
+  );
+
   const cancelDoctorReferral = useCallback(
     (entryId: string, project: string): string | null => {
       const e = db.entries.find((x) => x.id === entryId);
@@ -613,6 +677,8 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       moveEntry: async (id, n) => moveEntry(id, n),
       referToDoctor: async (i) => referToDoctor(i),
       cancelDoctorReferral: async (id, p) => cancelDoctorReferral(id, p),
+      markLeft: async (ps) => markLeft(ps),
+      unmarkLeft: async (id, p) => unmarkLeft(id, p),
       serveWithoutDonor: async (i) => serveWithoutDonor(i),
       saveProjectOptions: async (c, o) => saveProjectOptions(c, o),
       saveUser: async (u) => saveUser({ ...u, password: u.password || db.users.find((x) => x.id === u.id)?.password || "1234" }),
@@ -624,7 +690,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       saveSettings: async (s) => (saveSettings(s), null),
     }, KEYS), KEYS),
     [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
-      referToDoctor, cancelDoctorReferral, serveWithoutDonor, saveProjectOptions,
+      referToDoctor, cancelDoctorReferral, serveWithoutDonor, saveProjectOptions, markLeft, unmarkLeft,
       saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings],
   );
 

@@ -10,15 +10,17 @@ import { allProjects, type CenterFilter, centerName, projectName, userName } fro
 import { projectQueue, type QueueItem } from "@/lib/queue";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import { cn, dayFull, formatTime, minutesText, normalizeArabicName, normalizeDigits, todayKey } from "@/lib/utils";
-import { FilterSelect, ResetFilters, SearchBox } from "./bits";
+import { FilterSelect, ResetFilters, SearchBox, Segmented } from "./bits";
 
 const PAGE = 50;
 
 /** كل الحالات التي حوّلها الاستقبال ولم تسجّلها نقطة المشروع بعد — ليوم ومركز محددين */
-export function waitingItems(db: Parameters<typeof projectQueue>[0], date: string, center: CenterFilter): QueueItem[] {
+export function waitingItems(db: Parameters<typeof projectQueue>[0], date: string, center: CenterFilter, status: "wait" | "left" = "wait"): QueueItem[] {
   const centers = center === "ALL" ? db.centers.map((c) => c.code) : [center];
-  return centers.flatMap((c) => allProjects(db).flatMap((p) => projectQueue(db, c, p.code, date).filter((x) => x.status === "wait")));
+  return centers.flatMap((c) => allProjects(db).flatMap((p) => projectQueue(db, c, p.code, date).filter((x) => x.status === status)));
 }
+
+export type WaitMode = "wait" | "left";
 
 /**
  * نافذة "بانتظار الخدمة": من حوّلهم الاستقبال ولم يُخدموا بعد،
@@ -30,6 +32,7 @@ export function WaitingDialog({
   date,
   center,
   project,
+  mode: initialMode = "wait",
 }: {
   open: boolean;
   onClose: () => void;
@@ -37,9 +40,13 @@ export function WaitingDialog({
   center: CenterFilter;
   /** فتح النافذة على مشروع محدد */
   project?: string;
+  /** بانتظار الآن، أو حضرت ولم تُخدم */
+  mode?: WaitMode;
 }) {
   const { db } = useStore();
   const isToday = date === todayKey();
+  const [mode, setMode] = useState<WaitMode>(initialMode);
+  const showWait = mode === "wait";
   const [q, setQ] = useState("");
   const [proj, setProj] = useState("ALL");
   const [ctr, setCtr] = useState<CenterFilter>("ALL");
@@ -55,17 +62,22 @@ export function WaitingDialog({
     setCtr("ALL");
     setQ("");
     setSort("wait");
+    setMode(initialMode);
     setNow(Date.now());
-  }, [open, project]);
+  }, [open, project, initialMode]);
   // مدة الانتظار تتحدث كل 30 ثانية
   useEffect(() => {
     if (!open || !isToday) return;
     const t = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(t);
   }, [open, isToday]);
-  useEffect(() => setLimit(PAGE), [q, proj, ctr, sort]);
+  useEffect(() => setLimit(PAGE), [q, proj, ctr, sort, mode]);
 
-  const all = useMemo(() => (open ? waitingItems(db, date, center) : []), [open, db, date, center]);
+  const all = useMemo(() => (open ? waitingItems(db, date, center, mode) : []), [open, db, date, center, mode]);
+  const counts = useMemo(
+    () => (open ? { wait: waitingItems(db, date, center, "wait").length, left: waitingItems(db, date, center, "left").length } : { wait: 0, left: 0 }),
+    [open, db, date, center],
+  );
   const byProject = useMemo(() => {
     const m = new Map<string, number>();
     all.forEach((x) => m.set(x.project, (m.get(x.project) ?? 0) + 1));
@@ -88,12 +100,12 @@ export function WaitingDialog({
   }, [all, proj, ctr, q, sort, db.beneficiaries]);
 
   const waited = (x: QueueItem) => Math.max(0, Math.round((now - new Date(x.reception.at).getTime()) / 60_000));
-  const longest = isToday && all.length ? Math.max(...all.map(waited)) : 0;
+  const longest = showWait && all.length ? Math.max(...all.map(waited)) : 0;
   const filtering = Boolean(q.trim()) || proj !== "ALL" || ctr !== "ALL";
 
   async function copyList() {
     const lines = [
-      `⏳ بانتظار الخدمة — ${center === "ALL" ? "كل المراكز" : centerName(db, center)} — ${dayFull(date)}`,
+      `${showWait ? "⏳ بانتظار الخدمة" : "🚪 حضرت ولم تُخدم"} — ${center === "ALL" ? "كل المراكز" : centerName(db, center)} — ${dayFull(date)}`,
       proj !== "ALL" ? `المشروع: ${projectName(db, proj)}` : "",
       `العدد: ${list.length}`,
       "",
@@ -117,26 +129,38 @@ export function WaitingDialog({
       open={open}
       onClose={onClose}
       size="lg"
-      title={isToday ? "بانتظار الخدمة الآن" : "لم تُخدم في هذا اليوم"}
+      title={showWait ? "بانتظار الخدمة الآن" : "حضرت ولم تُخدم"}
       description={
         <>
-          حوّلها الاستقبال ولم تسجّلها نقطة المشروع بعد · <span className="num">{dayFull(date)}</span>
+          {showWait ? "حُوّلت للمشروع ولم تُخدم بعد" : "غادرت قبل خدمتها — رُحّلت يدوياً بعد 2:20 أو تلقائياً بعد 4:00"} · <span className="num">{dayFull(date)}</span>
           {center !== "ALL" && ` · ${centerName(db, center)}`}
         </>
       }
     >
       <div className="space-y-4">
+        {(counts.wait > 0 || counts.left > 0) && (
+          <Segmented
+            label="القائمة"
+            value={mode}
+            onChange={setMode}
+            className="flex w-full [&>button]:flex-1"
+            options={[
+              { value: "wait", label: "بانتظار الآن", count: counts.wait },
+              { value: "left", label: "حضرت ولم تُخدم", count: counts.left },
+            ]}
+          />
+        )}
         {/* ملخص */}
-        <div className={cn("grid gap-2", isToday ? "grid-cols-3" : "grid-cols-2")}>
-          <div className="rounded-xl bg-warn-soft px-3 py-2">
-            <div className="num text-xl font-bold leading-tight text-warn sm:text-2xl">{all.length}</div>
-            <div className="text-xs font-semibold text-warn/90">{isToday ? "بانتظار" : "لم تُخدم"}</div>
+        <div className={cn("grid gap-2", showWait ? "grid-cols-3" : "grid-cols-2")}>
+          <div className={cn("rounded-xl px-3 py-2", showWait ? "bg-warn-soft text-warn" : "bg-bad-soft text-bad")}>
+            <div className="num text-xl font-bold leading-tight sm:text-2xl">{all.length}</div>
+            <div className="text-xs font-semibold opacity-90">{showWait ? "بانتظار" : "لم تُخدم"}</div>
           </div>
           <div className="rounded-xl bg-sunken px-3 py-2">
             <div className="num text-xl font-bold leading-tight sm:text-2xl">{new Set(all.map((x) => x.reception.nid)).size}</div>
             <div className="text-xs font-semibold text-muted">هوية مختلفة</div>
           </div>
-          {isToday && (
+          {showWait && (
             <div className={cn("rounded-xl px-3 py-2", longest >= 120 ? "bg-bad-soft text-bad" : "bg-sunken")}>
               <div className="text-sm font-bold leading-tight sm:text-base">{all.length ? minutesText(longest) : "—"}</div>
               <div className="text-xs font-semibold opacity-80">أطول انتظار</div>
@@ -228,7 +252,12 @@ export function WaitingDialog({
                         الاستقبال <span className="num">{formatTime(x.reception.at)}</span> · {userName(db, x.reception.userId)}
                       </span>
                       {center === "ALL" && <span>{centerName(db, x.reception.center, true)}</span>}
-                      {isToday && (
+                      {!showWait && (
+                        <span className="font-bold text-bad">
+                          {x.left?.auto ? "رُحّلت تلقائياً" : `رحّلها ${x.left?.by ? userName(db, x.left.by) : "الموظف"}${x.left?.at ? ` ${formatTime(x.left.at)}` : ""}`}
+                        </span>
+                      )}
+                      {showWait && isToday && (
                         <span className={cn("inline-flex items-center gap-1 font-bold sm:hidden", w >= 120 ? "text-bad" : w >= 30 ? "text-warn" : "")}>
                           <Clock className="size-3.5" />
                           ينتظر {minutesText(w)}
@@ -236,7 +265,7 @@ export function WaitingDialog({
                       )}
                     </span>
                   </span>
-                  {isToday && (
+                  {showWait && isToday && (
                     <span
                       className={cn(
                         "hidden shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold sm:inline-flex",
@@ -262,7 +291,9 @@ export function WaitingDialog({
         ) : (
           <div className="flex flex-col items-center gap-2 py-10 text-center text-muted">
             <Hourglass className="size-8 text-ok" />
-            <p className="font-semibold">{all.length ? "لا نتائج مطابقة للفلاتر" : isToday ? "لا يوجد أحد بانتظار الخدمة الآن" : "كل الحالات المحوّلة خُدمت"}</p>
+            <p className="font-semibold">
+              {all.length ? "لا نتائج مطابقة للفلاتر" : showWait ? "لا يوجد أحد بانتظار الخدمة الآن" : "لا توجد حالات حضرت ولم تُخدم"}
+            </p>
           </div>
         )}
       </div>

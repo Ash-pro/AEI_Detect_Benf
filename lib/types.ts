@@ -70,6 +70,8 @@ export interface Entry {
   noDonor?: { reason?: string };
   /** إدخال الاستقبال: مشاريع الطبيب التي حوّلتها نقطة: مشروع ← من حوّل */
   referrals?: Record<string, Referral>;
+  /** إدخال الاستقبال: أدوار رحّلتها النقطة يدوياً إلى "حضرت ولم تُخدم": مشروع ← متى ومن */
+  left?: Record<string, { at: string; by?: string }>;
 }
 
 export interface Referral {

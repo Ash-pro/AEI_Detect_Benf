@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Hourglass, Pencil, Search, Stethoscope, Store, UserPlus, X } from "lucide-react";
 import { CenterTabs, DateStepper, ExportButton, FilterBar, FilterSelect, PageHead, ResetFilters, Segmented, StatCard, StatStrip, coverage } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
-import { WaitingDialog } from "@/components/admin/waiting-dialog";
+import { WaitingDialog, type WaitMode } from "@/components/admin/waiting-dialog";
 import { EntryBadges, KindTag, ProjectChip } from "@/components/entry/history";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import { IdTypeTag } from "@/components/entry/id-fields";
@@ -69,6 +69,10 @@ function DayInner() {
     setIsNew("ALL");
   };
   const waiting = s.projects.reduce((n, p) => n + p.waiting, 0);
+  const left = s.projects.reduce((n, p) => n + p.left, 0);
+  // اليوم: المنتظرون الآن. يوم سابق: من حضر ولم يُخدم
+  const pending = isToday ? waiting : waiting + left;
+  const waitMode: WaitMode = isToday && (waiting || !left) ? "wait" : "left";
   const referred = s.projects.reduce((n, p) => n + p.referred, 0);
   const served = s.projects.reduce((n, p) => n + p.served, 0);
   const pct = coverage(served, referred);
@@ -99,7 +103,7 @@ function DayInner() {
           { label: "استقبال", value: s.reception, tone: "brand" },
           { label: "جديدة", value: s.receptionNew, tone: "info" },
           { label: "خُدمت", value: s.point, tone: "ok", hint: pct === null ? undefined : `${pct}%` },
-          { label: isToday ? "بانتظار" : "لم تُخدم", value: waiting, tone: waiting ? "warn" : "ink" },
+          { label: isToday ? "بانتظار" : "لم تُخدم", value: pending, tone: pending ? "warn" : "ink" },
         ]}
       />
       <div className="hidden grid-cols-2 gap-3 sm:grid lg:grid-cols-4">
@@ -107,24 +111,25 @@ function DayInner() {
         <StatCard label="حالات جديدة" value={s.receptionNew} tone="info" icon={UserPlus} hint={s.reception ? `${Math.round((s.receptionNew / s.reception) * 100)}% من الاستقبال` : undefined} />
         <StatCard label="خُدمت في النقاط" value={s.point} tone="ok" icon={Stethoscope} hint={pct === null ? undefined : `نسبة الخدمة ${pct}%`} />
         <StatCard
-          label={isToday ? "بانتظار الخدمة" : "لم تُخدم"}
-          value={waiting}
-          tone={waiting ? "warn" : "ink"}
+          label={isToday ? "بانتظار الخدمة" : "حضرت ولم تُخدم"}
+          value={pending}
+          tone={pending ? "warn" : "ink"}
           icon={Hourglass}
+          hint={isToday && left ? `حضرت ولم تُخدم ${left}` : undefined}
           onClick={() => setWaitOpen(true)}
-          action={waiting ? "عرض القائمة" : undefined}
+          action={waiting || left ? "عرض القائمة" : undefined}
         />
       </div>
-      {waiting > 0 && (
+      {(waiting > 0 || left > 0) && (
         <button
           onClick={() => setWaitOpen(true)}
           className="focus-ring mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-warn/30 bg-warn-soft text-sm font-bold text-warn sm:hidden"
         >
           <Hourglass className="size-4" />
-          {isToday ? "عرض المنتظرين" : "عرض من لم يُخدم"} <span className="num">({waiting})</span>
+          {waitMode === "wait" ? "عرض المنتظرين" : "عرض من حضر ولم يُخدم"} <span className="num">({waitMode === "wait" ? waiting : left})</span>
         </button>
       )}
-      <WaitingDialog open={waitOpen} onClose={() => setWaitOpen(false)} date={date} center={center} project={project || undefined} />
+      <WaitingDialog open={waitOpen} mode={waitMode} onClose={() => setWaitOpen(false)} date={date} center={center} project={project || undefined} />
 
       {/* المشاريع: فلتر مع محوّل/مخدوم */}
       {projRows.length > 0 && (
@@ -159,6 +164,7 @@ function DayInner() {
                     محوّل {p.referred}
                     {p.fromPoints ? ` (نقاط ${p.fromPoints})` : ""} · مخدوم {p.served}
                     {p.waiting ? ` · بانتظار ${p.waiting}` : ""}
+                    {p.left ? ` · لم تُخدم ${p.left}` : ""}
                   </span>
                 </span>
               </button>
