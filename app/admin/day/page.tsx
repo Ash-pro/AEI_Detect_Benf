@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Hourglass, Pencil, Search, Stethoscope, Store, UserPlus, X } from "lucide-react";
 import { CenterTabs, DateStepper, ExportButton, FilterBar, FilterSelect, PageHead, ResetFilters, Segmented, StatCard, StatStrip, coverage } from "@/components/admin/bits";
 import { AdminEntryDialog } from "@/components/admin/entry-dialog";
+import { WaitingDialog } from "@/components/admin/waiting-dialog";
 import { EntryBadges, KindTag, ProjectChip } from "@/components/entry/history";
 import { projectColor, projectSoft } from "@/lib/project-colors";
 import { IdTypeTag } from "@/components/entry/id-fields";
@@ -35,6 +36,7 @@ function DayInner() {
   const [isNew, setIsNew] = useState<"ALL" | "NEW" | "OLD">("ALL");
   const [shown, setShown] = useState(PAGE);
   const [edit, setEdit] = useState<Entry | null>(null);
+  const [waitOpen, setWaitOpen] = useState(false);
 
   const go = (d: string) => router.replace(`${path}?d=${d}&c=${center}${project ? `&p=${project}` : ""}`, { scroll: false });
   useEffect(() => setShown(PAGE), [date, center, project, kind, q, staff, isNew]);
@@ -104,8 +106,25 @@ function DayInner() {
         <StatCard label="حالات الاستقبال" value={s.reception} tone="brand" icon={Store} hint={`${s.staff} موظف عملوا`} />
         <StatCard label="حالات جديدة" value={s.receptionNew} tone="info" icon={UserPlus} hint={s.reception ? `${Math.round((s.receptionNew / s.reception) * 100)}% من الاستقبال` : undefined} />
         <StatCard label="خُدمت في النقاط" value={s.point} tone="ok" icon={Stethoscope} hint={pct === null ? undefined : `نسبة الخدمة ${pct}%`} />
-        <StatCard label={isToday ? "بانتظار الخدمة" : "لم تُخدم"} value={waiting} tone={waiting ? "warn" : "ink"} icon={Hourglass} />
+        <StatCard
+          label={isToday ? "بانتظار الخدمة" : "لم تُخدم"}
+          value={waiting}
+          tone={waiting ? "warn" : "ink"}
+          icon={Hourglass}
+          onClick={() => setWaitOpen(true)}
+          action={waiting ? "عرض القائمة" : undefined}
+        />
       </div>
+      {waiting > 0 && (
+        <button
+          onClick={() => setWaitOpen(true)}
+          className="focus-ring mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-warn/30 bg-warn-soft text-sm font-bold text-warn sm:hidden"
+        >
+          <Hourglass className="size-4" />
+          {isToday ? "عرض المنتظرين" : "عرض من لم يُخدم"} <span className="num">({waiting})</span>
+        </button>
+      )}
+      <WaitingDialog open={waitOpen} onClose={() => setWaitOpen(false)} date={date} center={center} project={project || undefined} />
 
       {/* المشاريع: فلتر مع موجّه/مخدوم */}
       {projRows.length > 0 && (

@@ -149,6 +149,8 @@ export function StatCard({
   icon: Icon,
   hint,
   suffix,
+  onClick,
+  action,
 }: {
   label: string;
   value: number | string;
@@ -157,10 +159,21 @@ export function StatCard({
   icon?: LucideIcon;
   hint?: React.ReactNode;
   suffix?: string;
+  /** البطاقة قابلة للضغط (تفتح تفاصيل) */
+  onClick?: () => void;
+  /** نص صغير يدل على الضغط، مثل "عرض القائمة" */
+  action?: string;
 }) {
   const t = TONES[tone];
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+    <Tag
+      {...(onClick ? { type: "button" as const, onClick } : {})}
+      className={cn(
+        "flex min-w-0 flex-col rounded-2xl border border-line bg-surface p-4 text-start shadow-card sm:p-5",
+        onClick && "focus-ring group cursor-pointer transition hover:border-brand/40 hover:shadow-pop",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-muted sm:text-sm" title={label}>{label}</div>
         {Icon && (
@@ -188,8 +201,14 @@ export function StatCard({
         ) : hint ? (
           <span className="block truncate text-muted">{hint}</span>
         ) : null}
+        {action && (
+          <span className="mt-1.5 flex w-fit items-center gap-0.5 text-xs font-bold text-brand group-hover:underline">
+            {action}
+            <ChevronLeft className="size-3.5" />
+          </span>
+        )}
       </div>
-    </div>
+    </Tag>
   );
 }
 

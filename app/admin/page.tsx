@@ -25,6 +25,7 @@ import {
 } from "@/components/admin/bits";
 import { Card } from "@/components/ui/card";
 import { ShareDialog } from "@/components/entry/share-dialog";
+import { WaitingDialog } from "@/components/admin/waiting-dialog";
 import { HistoryRow } from "@/components/entry/history";
 import { useStore } from "@/lib/store";
 import { adminShareText, type CenterFilter, dayStats, filterCenter, hourly, workedDays } from "@/lib/queries";
@@ -39,6 +40,8 @@ export default function AdminHome() {
   const [date, setDate] = useState(todayKey());
   const [center, setCenter] = useState<CenterFilter>("ALL");
   const [share, setShare] = useState(false);
+  // نافذة المنتظرين: "ALL" أو رمز مشروع
+  const [waitOpen, setWaitOpen] = useState<string | null>(null);
   const isToday = date === todayKey();
   // فلاتر جدول المشاريع وآخر الإدخالات
   const [pq, setPq] = useState("");
@@ -136,6 +139,8 @@ export default function AdminHome() {
           tone={totals.waiting ? "warn" : "ink"}
           icon={Hourglass}
           hint={pct === null ? "لا تحويلات" : `نسبة الخدمة ${pct}%`}
+          onClick={() => setWaitOpen("ALL")}
+          action={totals.waiting ? "عرض القائمة" : undefined}
         />
       </div>
 
@@ -247,9 +252,20 @@ export default function AdminHome() {
                       <td className="num px-3 py-3 text-center font-bold">{r.referred}</td>
                       <td className="num px-3 py-3 text-center font-bold text-ok">{r.served}</td>
                       <td className="px-3 py-3 text-center">
-                        <span className={`num inline-block min-w-8 rounded-md px-1.5 py-0.5 font-bold ${r.waiting ? "bg-warn-soft text-warn" : "text-muted"}`}>
-                          {r.waiting}
-                        </span>
+                        {r.waiting ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setWaitOpen(r.code);
+                            }}
+                            title={`عرض المنتظرين في ${r.name}`}
+                            className="focus-ring num inline-flex min-h-9 min-w-10 items-center justify-center rounded-lg bg-warn-soft px-2 font-bold text-warn underline-offset-2 hover:underline hover:ring-2 hover:ring-warn/30"
+                          >
+                            {r.waiting}
+                          </button>
+                        ) : (
+                          <span className="num inline-block min-w-8 rounded-md px-1.5 py-0.5 font-bold text-muted">0</span>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <CoverageBar served={r.served} referred={r.referred} />
@@ -368,6 +384,13 @@ export default function AdminHome() {
         </div>
       </div>
 
+      <WaitingDialog
+        open={waitOpen !== null}
+        onClose={() => setWaitOpen(null)}
+        date={date}
+        center={center}
+        project={waitOpen && waitOpen !== "ALL" ? waitOpen : undefined}
+      />
       <ShareDialog open={share} onClose={() => setShare(false)} title="مشاركة ملخص اليوم" text={adminShareText(db, s, center)} />
     </>
   );
