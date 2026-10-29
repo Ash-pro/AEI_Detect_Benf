@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CopyCheck, Download, CalendarDays, FolderKanban, LayoutDashboard, LineChart, LogOut, Menu, Search, Settings, Users, X } from "lucide-react";
 import { BrandMark } from "@/components/shell/brand-mark";
+import { SyncStatus } from "@/components/shell/sync-status";
 import { isStandalone, requestInstall } from "@/components/pwa/install";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <div className="border-t border-line p-3">
+            <SyncStatus variant="line" className="mb-1 w-full justify-start" />
             <div className="flex items-center gap-3 rounded-xl px-2 py-2">
               <span className="grid size-9 place-items-center rounded-full bg-sunken font-bold text-muted">{user?.fullName.trim()[0]}</span>
               <div className="min-w-0 flex-1 leading-tight">
@@ -116,7 +118,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur lg:hidden">
           <div className="flex h-14 items-center justify-between gap-3 px-4">
             <BrandMark />
-            {current && <span className="truncate text-sm font-bold text-muted">{current.label}</span>}
+            <span className="flex min-w-0 items-center gap-2">
+              {current && <span className="truncate text-sm font-bold text-muted">{current.label}</span>}
+              <SyncStatus />
+            </span>
           </div>
         </header>
 

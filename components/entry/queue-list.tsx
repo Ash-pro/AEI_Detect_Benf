@@ -6,6 +6,7 @@ import { appointmentOf } from "@/lib/appointments";
 import { UndoEntryDialog, canUndo } from "./undo-dialog";
 import { IdTypeTag } from "./id-fields";
 import { Card } from "@/components/ui/card";
+import { SyncStatus } from "@/components/shell/sync-status";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
@@ -113,7 +114,8 @@ export function QueueList({
             قائمة الانتظار
             {mine.length === 1 && <span className="truncate text-base font-semibold text-muted">· {projectName(db, mine[0])}</span>}
           </h2>
-          <span className="text-xs text-muted">مرتبة حسب الدور ووقت الاستقبال</span>
+          {/* آخر تحديث للقائمة + تحديث يدوي */}
+          <SyncStatus variant="line" className="-me-2" />
         </div>
 
         {mine.length > 1 && (

@@ -57,9 +57,27 @@ export interface AddEntryInput {
 /** التاريخ قبل نافذة البيانات لتحميل المواعيد */
 const APPT_BACK_DAYS = 62;
 
+/** حالة مزامنة بيانات اليوم مع الخادم */
+export interface SyncState {
+  /** آخر تحديث ناجح (ms) */
+  at: number | null;
+  /** آخر محاولة تحديث فشلت (تُعاد تلقائياً) */
+  failing: boolean;
+  /** التحديث اللحظي متصل */
+  live: boolean;
+  /** يجري التحديث الآن */
+  busy: boolean;
+}
+
+/** تحديث احتياطي: إذا لم يُحدَّث اليوم منذ هذه المدة والشاشة ظاهرة */
+export const POLL_MS = 30_000;
+
 export interface Ctx {
   ready: boolean;
   online: boolean;
+  sync: SyncState;
+  /** تحديث يدوي فوري لبيانات اليوم */
+  syncNow: () => Promise<void>;
   db: Db;
   center: CenterCode | null;
   user: SessionUser | null;
@@ -170,6 +188,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   centerRef.current = center;
   const channel = useRef<RealtimeChannel | null>(null);
   const timer = useRef<number | null>(null);
+  // المزامنة: آخر تحديث ناجح، وإعادة المحاولة عند الفشل، ومنع تحديثين متزامنين
+  const [sync, setSync] = useState<SyncState>({ at: null, failing: false, live: false, busy: false });
+  const syncAt = useRef(0);
+  const inflight = useRef<Promise<void> | null>(null);
+  const again = useRef(false);
+  const fails = useRef(0);
+  const retryTimer = useRef<number | null>(null);
+  const joined = useRef(false);
 
   const projectOrder = () => new Map(dbRef.current.projects.map((p) => [p.code, p.order]));
 
@@ -202,29 +228,72 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [sb],
   );
 
-  /** تحديث إدخالات اليوم وأرقام الدور (بعد أي كتابة أو حدث لحظي) */
-  const refreshToday = useCallback(async () => {
+  const markSynced = useCallback(() => {
+    syncAt.current = Date.now();
+    fails.current = 0;
+    if (retryTimer.current) window.clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    setSync((s) => ({ ...s, at: syncAt.current, failing: false }));
+  }, []);
+
+  /** تحميل إدخالات اليوم وأرقام الدور مرة واحدة */
+  const fetchToday = useCallback(async () => {
     const u = userRef.current;
     if (!u) return;
     const today = todayKey();
     const c = isStaff(u.role) ? centerRef.current ?? undefined : undefined;
     const scope: EntryScope = { day: today, ...(c ? { center: c } : {}) };
-    try {
-      const [batch, counters, appointments] = await Promise.all([
-        loadEntries(sb, scope, projectOrder()),
-        loadCounters(sb, today),
-        loadAppointments(sb, addDays(today, -APPT_BACK_DAYS)).catch(() => null),
-      ]);
-      setDb((d) => ({
-        ...merge(d, batch, (e) => e.date === today && (!c || e.center === c)),
-        counters: { ...d.counters, ...counters },
-        ...(appointments ? { appointments: mergeAppointments(d.appointments, appointments, () => true) } : {}),
-      }));
-    } catch {
-      /* يُعاد عند الحدث التالي */
-    }
+    const [batch, counters, appointments] = await Promise.all([
+      loadEntries(sb, scope, projectOrder()),
+      loadCounters(sb, today),
+      loadAppointments(sb, addDays(today, -APPT_BACK_DAYS)).catch(() => null),
+    ]);
+    if (userRef.current !== u) return; // خرج المستخدم أثناء التحميل
+    setDb((d) => ({
+      ...merge(d, batch, (e) => e.date === today && (!c || e.center === c)),
+      counters: { ...d.counters, ...counters },
+      ...(appointments ? { appointments: mergeAppointments(d.appointments, appointments, () => true) } : {}),
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb]);
+
+  /**
+   * تحديث إدخالات اليوم (بعد أي كتابة أو حدث لحظي أو تحديث دوري).
+   * - لا يعمل تحديثان معاً: طلب أثناء التحميل يُنفَّذ مرة واحدة بعده.
+   * - عند الفشل (نت ضعيف) يُعاد تلقائياً بعد 3 ثم 6 ثم 12… حتى 30 ثانية.
+   */
+  const refreshToday = useCallback(async (): Promise<void> => {
+    if (!userRef.current) return;
+    if (inflight.current) {
+      again.current = true;
+      return inflight.current;
+    }
+    const run = (async () => {
+      setSync((s) => ({ ...s, busy: true }));
+      try {
+        do {
+          again.current = false;
+          await fetchToday();
+        } while (again.current && userRef.current);
+        markSynced();
+      } catch {
+        fails.current++;
+        setSync((s) => ({ ...s, failing: true }));
+        if (retryTimer.current) window.clearTimeout(retryTimer.current);
+        const wait = Math.min(3000 * 2 ** (fails.current - 1), 30_000);
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = null;
+          if (userRef.current) void refreshToday();
+        }, wait);
+      } finally {
+        inflight.current = null;
+        setSync((s) => ({ ...s, busy: false }));
+      }
+    })();
+    inflight.current = run;
+    return run;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchToday, markSynced]);
 
   const lookup = useCallback(
     async (nid: string) => {
@@ -255,6 +324,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const subscribe = useCallback(() => {
     channel.current?.unsubscribe();
+    joined.current = false;
     const schedule = () => {
       if (timer.current) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => void refreshToday(), 500);
@@ -264,8 +334,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, schedule)
       .on("postgres_changes", { event: "*", schema: "public", table: "entry_projects" }, schedule)
       .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, schedule)
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setSync((s) => ({ ...s, live: true }));
+          // بعد عودة الاتصال: الأحداث التي فاتت أثناء الانقطاع لا تُعاد، فنحدّث كل شيء
+          if (joined.current) void refreshToday();
+          joined.current = true;
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setSync((s) => ({ ...s, live: false }));
+        }
+      });
   }, [sb, refreshToday]);
+
+  /* ===== التحديث الاحتياطي =====
+     إذا لم يصل أي تحديث منذ 30 ثانية (حدث ضاع أو اتصال لحظي مقطوع) والشاشة ظاهرة: نحدّث.
+     في أوقات الضغط تصل الأحداث باستمرار فلا يعمل هذا التحديث تقريباً. */
+  useEffect(() => {
+    if (!user) return;
+    const t = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || !navigator.onLine || inflight.current || retryTimer.current) return;
+      if (Date.now() - syncAt.current >= POLL_MS) void refreshToday();
+    }, 5_000);
+    return () => window.clearInterval(t);
+  }, [user, refreshToday]);
 
   /* ===== البدء ===== */
 
@@ -296,6 +387,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             userRef.current = s;
             await loadAll(s, c);
             if (!alive) return;
+            markSynced();
             setUser(s);
             subscribe();
           } else {
@@ -355,6 +447,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       userRef.current = s;
       try {
         await loadAll(s, c);
+        markSynced();
       } catch (e) {
         await sb.auth.signOut();
         return { error: errorText(e) };
@@ -369,6 +462,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     channel.current?.unsubscribe();
     channel.current = null;
+    if (retryTimer.current) window.clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    setSync({ at: null, failing: false, live: false, busy: false });
     userRef.current = null;
     setUser(null);
     setDb((d) => ({ ...EMPTY, centers: d.centers }));
@@ -698,7 +794,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // كل عملية مع قاعدة البيانات تُظهر شريط التقدّم العلوي
       tracked<Ctx>(
         {
-          ready, online, db, center, user, setCenter, login, logout, lookup, refresh,
+          ready, online, sync, syncNow: refreshToday, db, center, user, setCenter, login, logout, lookup, refresh,
           addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
           referToDoctor, cancelDoctorReferral, serveWithoutDonor, markLeft, unmarkLeft,
           saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, saveProjectOptions,
@@ -707,7 +803,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           "referToDoctor", "cancelDoctorReferral", "serveWithoutDonor", "markLeft", "unmarkLeft",
           "saveUser", "deleteUser", "saveProject", "moveProject", "reorderProjects", "renameCenter", "saveSettings", "saveProjectOptions"],
       ),
-    [ready, online, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
+    [ready, online, sync, refreshToday, db, center, user, setCenter, login, logout, lookup, refresh, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
       referToDoctor, cancelDoctorReferral, serveWithoutDonor, markLeft, unmarkLeft,
       saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, saveProjectOptions],
   );

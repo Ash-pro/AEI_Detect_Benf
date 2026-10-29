@@ -654,12 +654,19 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
 
   const saveSettings = useCallback((s: Settings) => setDb((d) => log({ ...d, settings: s }, "تعديل الإعدادات", "")), [log]);
 
+  // العرض التجريبي: البيانات محلية دائماً محدّثة — "آخر تحديث" = آخر تغيير أو ضغط تحديث
+  const [syncAt, setSyncAt] = useState(() => Date.now());
+  useEffect(() => setSyncAt(Date.now()), [db]);
+  const sync = useMemo(() => ({ at: syncAt, failing: !online, live: online, busy: false }), [syncAt, online]);
+
   const value = useMemo<Ctx>(
     () =>
       // العرض التجريبي: تأخير بسيط يحاكي زمن قاعدة البيانات حتى تظهر مؤشرات التحميل كما في الوضع الحقيقي
       tracked<Ctx>(withLatency({
       ready,
       online,
+      sync,
+      syncNow: async () => setSyncAt(Date.now()),
       db,
       center,
       user,
@@ -691,7 +698,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     }, KEYS), KEYS),
     [ready, online, db, center, user, setCenter, login, logout, addEntry, updateBeneficiary, updateEntryProjects, deleteEntry, correctRouting, referFromPoint, moveEntry,
       referToDoctor, cancelDoctorReferral, serveWithoutDonor, saveProjectOptions, markLeft, unmarkLeft,
-      saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings],
+      saveUser, deleteUser, saveProject, moveProject, reorderProjects, renameCenter, saveSettings, sync],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
